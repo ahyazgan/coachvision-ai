@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm create *)",
+      "Bash(shopt -s dotglob)",
+      "Bash(mv cv-temp/* .)",
+      "Bash(shopt -u dotglob)"
+    ]
+  }
+}

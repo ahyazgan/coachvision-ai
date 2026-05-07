@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* CoachVision koyu tema (varsayılan) - HSL formatında */
+    --background: 218 36% 5%;
+    --foreground: 213 35% 92%;
+    --surface: 220 40% 9%;
+    --card: 218 39% 11%;
+    --card-foreground: 213 35% 92%;
+    --border: 218 39% 19%;
+    --input: 218 39% 15%;
+    --ring: 187 100% 50%;
+
+    --primary: 187 100% 50%;
+    --primary-foreground: 218 36% 5%;
+    --secondary: 218 39% 19%;
+    --secondary-foreground: 213 35% 92%;
+
+    --muted: 218 39% 14%;
+    --muted-foreground: 211 25% 48%;
+
+    --accent: 187 100% 50%;
+    --accent-foreground: 218 36% 5%;
+
+    --destructive: 348 100% 65%;
+    --destructive-foreground: 213 35% 92%;
+
+    --success: 111 100% 54%;
+    --success-foreground: 218 36% 5%;
+
+    --warning: 51 100% 50%;
+    --warning-foreground: 218 36% 5%;
+
+    --pitch: 134 60% 22%;
+    --team-home: 187 100% 50%;
+    --team-away: 348 100% 65%;
+
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  /* Sayısal vurgu için condensed font */
+  .stat-number {
+    @apply font-condensed font-bold tabular-nums;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Askeri/taktik HUD ızgara çizgisi */
+  .grid-bg {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}

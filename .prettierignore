@@ -1,0 +1,8 @@
+node_modules
+.next
+dist
+build
+public
+pnpm-lock.yaml
+*.md
+prisma/migrations

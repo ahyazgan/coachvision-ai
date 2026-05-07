@@ -1,0 +1,319 @@
+// CoachVision AI veritabanı şeması
+// Detaylı model açıklamaları PROJECT_BRIEF.md içinde
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =========================================
+// KULÜP & TAKIM
+// =========================================
+
+model Club {
+  id        String   @id @default(cuid())
+  name      String
+  logo      String?
+  league    String
+  teams     Team[]
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Team {
+  id       String   @id @default(cuid())
+  name     String
+  category String   // "A", "U21", "U19", "U17", "Women"
+  clubId   String
+  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  players  Player[]
+  matches  Match[]
+  trainingSessions TrainingSession[]
+  setPieces SetPiece[]
+
+  @@index([clubId])
+}
+
+// =========================================
+// OYUNCU
+// =========================================
+
+model Player {
+  id            String       @id @default(cuid())
+  firstName     String
+  lastName      String
+  jerseyNumber  Int
+  position      String       // "GK", "DF", "MF", "FW"
+  birthDate     DateTime
+  nationality   String?
+  height        Int?
+  weight        Int?
+  preferredFoot String?      // "left", "right", "both"
+  marketValue   Int?
+  contractEnd   DateTime?
+  photo         String?
+  teamId        String
+  team          Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  stats         PlayerStat[]
+  injuries      Injury[]
+  fitnessLogs   FitnessLog[]
+  matchEvents   MatchEvent[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([teamId])
+  @@unique([teamId, jerseyNumber])
+}
+
+model PlayerStat {
+  id            String   @id @default(cuid())
+  playerId      String
+  matchId       String?
+  goals         Int      @default(0)
+  assists       Int      @default(0)
+  passes        Int      @default(0)
+  passAccuracy  Float    @default(0)
+  shots         Int      @default(0)
+  shotsOnTarget Int      @default(0)
+  tackles       Int      @default(0)
+  interceptions Int      @default(0)
+  distance      Float    @default(0)
+  topSpeed      Float    @default(0)
+  rating        Float    @default(0)
+  player        Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match         Match?   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now())
+
+  @@index([playerId])
+  @@index([matchId])
+}
+
+// =========================================
+// MAÇ
+// =========================================
+
+model Match {
+  id           String       @id @default(cuid())
+  homeTeamId   String
+  awayTeamName String
+  date         DateTime
+  venue        String?
+  competition  String
+  homeScore    Int?
+  awayScore    Int?
+  status       String       // "scheduled", "live", "completed"
+  formation    String?
+  team         Team         @relation(fields: [homeTeamId], references: [id], onDelete: Cascade)
+  events       MatchEvent[]
+  liveData     LiveData[]
+  stats        PlayerStat[]
+  conversations AIConversation[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([homeTeamId])
+  @@index([date])
+  @@index([status])
+}
+
+model MatchEvent {
+  id        String   @id @default(cuid())
+  matchId   String
+  minute    Int
+  type      String   // "goal", "yellow", "red", "sub", "shot", "save"
+  playerId  String?
+  details   Json?
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player    Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([matchId])
+  @@index([playerId])
+}
+
+// =========================================
+// CANLI TRACKING
+// =========================================
+
+model LiveData {
+  id        String   @id @default(cuid())
+  matchId   String
+  timestamp DateTime
+  playerId  String?
+  x         Float    // Saha koordinatı 0-100
+  y         Float
+  speed     Float
+  distance  Float
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId, timestamp])
+}
+
+// =========================================
+// SAĞLIK
+// =========================================
+
+model Injury {
+  id             String    @id @default(cuid())
+  playerId       String
+  type           String
+  severity       String    // "minor", "moderate", "severe"
+  startDate      DateTime
+  expectedReturn DateTime?
+  actualReturn   DateTime?
+  notes          String?
+  player         Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+
+  @@index([playerId])
+}
+
+model FitnessLog {
+  id         String   @id @default(cuid())
+  playerId   String
+  date       DateTime
+  fatigue    Int      // 1-100
+  sleepHours Float?
+  restingHR  Int?
+  rpe        Int?     // Rate of Perceived Exertion 1-10
+  acwr       Float?   // Akut/Kronik yük oranı
+  notes      String?
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, date])
+}
+
+// =========================================
+// ANTRENMAN
+// =========================================
+
+model TrainingSession {
+  id        String   @id @default(cuid())
+  teamId    String
+  date      DateTime
+  type      String   // "tactical", "physical", "technical", "recovery"
+  duration  Int      // dakika
+  intensity Int      // 1-10
+  drills    Json
+  notes     String?
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, date])
+}
+
+// =========================================
+// RAKİP
+// =========================================
+
+model Opponent {
+  id         String   @id @default(cuid())
+  name       String
+  league     String
+  formation  String?
+  strengths  Json
+  weaknesses Json
+  keyPlayers Json
+  recentForm Json
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// =========================================
+// SET PIECES
+// =========================================
+
+model SetPiece {
+  id          String   @id @default(cuid())
+  teamId      String
+  type        String   // "corner", "freekick", "throwin"
+  diagram     Json
+  successRate Float?
+  notes       String?
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([teamId])
+}
+
+// =========================================
+// AI
+// =========================================
+
+model AIConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  matchId   String?
+  messages  Json
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match     Match?   @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([matchId])
+}
+
+// =========================================
+// KULLANICI & AUTH (NextAuth uyumlu)
+// =========================================
+
+model User {
+  id            String           @id @default(cuid())
+  email         String           @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          String           @default("head_coach") // "head_coach", "assistant", "analyst", "scout", "doctor", "admin"
+  clubId        String?
+  club          Club?            @relation(fields: [clubId], references: [id], onDelete: SetNull)
+  accounts      Account[]
+  sessions      Session[]
+  conversations AIConversation[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([clubId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
