@@ -5,6 +5,13 @@ Next.js backend HTTP üzerinden bu sunucuyu tetikler; ilerleme WebSocket ile dö
 """
 from __future__ import annotations
 
+# Windows konsolu varsayılan cp1252 ile gelir; emoji ve Türkçe karakterler için UTF-8'e zorla.
+import sys
+import io
+if sys.stdout.encoding != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
+
 import asyncio
 import os
 from contextlib import asynccontextmanager

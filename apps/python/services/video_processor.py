@@ -63,7 +63,10 @@ async def process_video(
         # JSON çıktısı
         ANALYSIS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         out_path = ANALYSIS_OUTPUT_DIR / f"{video_id}.json"
-        out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+        out_path.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
         # Next.js'e callback (DB yazımı için)
         await _notify_nextjs(video_id, result)
