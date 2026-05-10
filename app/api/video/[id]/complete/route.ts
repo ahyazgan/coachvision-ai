@@ -10,6 +10,7 @@ const FrameSchema = z.object({
   timestamp: z.number().optional(),
   player_count_a: z.number().int(),
   player_count_b: z.number().int(),
+  outlier_count: z.number().int().optional(),
   zones_a: z.record(z.string(), z.number()),
   zones_b: z.record(z.string(), z.number()),
   compactness_a: z.number(),
@@ -19,11 +20,20 @@ const FrameSchema = z.object({
   heatmap_b: z.array(z.array(z.number())).optional(),
 })
 
+const PreviewSchema = z.object({
+  name: z.string(),
+  timestamp_sec: z.number(),
+  player_count: z.number().int(),
+  outliers: z.number().int().optional(),
+})
+
 const PayloadSchema = z.object({
   frames_analyzed: z.number().int(),
+  frames_skipped: z.number().int().optional(),
   duration_sec: z.number().optional(),
   frames: z.array(FrameSchema),
   ai_advice: z.string().nullable().optional(),
+  previews: z.array(PreviewSchema).optional(),
 })
 
 export const runtime = 'nodejs'
