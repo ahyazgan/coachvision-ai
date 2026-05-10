@@ -13,7 +13,6 @@ export function LoginForm() {
   const callbackUrl = params.get('callbackUrl') ?? '/'
 
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -24,14 +23,14 @@ export function LoginForm() {
 
     const result = await signIn('credentials', {
       email,
-      password,
+      password: 'dev',
       redirect: false,
       callbackUrl,
     })
 
     setLoading(false)
     if (result?.error) {
-      setError('Giriş başarısız. E-posta ve şifrenizi kontrol edin.')
+      setError('Giriş başarısız. E-posta adresinizi kontrol edin.')
       return
     }
     router.push(result?.url ?? callbackUrl)
@@ -43,7 +42,7 @@ export function LoginForm() {
       <CardHeader>
         <CardTitle>Giriş Yap</CardTitle>
         <CardDescription>
-          Geliştirme modunda herhangi bir e-posta ile giriş yapabilirsiniz.
+          Geliştirme modu — herhangi bir e-posta ile giriş yapabilirsiniz.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -60,19 +59,6 @@ export function LoginForm() {
               placeholder="koc@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="password" className="text-sm font-medium">
-              Şifre
-            </label>
-            <Input
-              id="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
             />
           </div>
           {error && (

@@ -6,7 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  // NOT: Geliştirmede SQLite. Üretimde "postgresql"e döneceğiz.
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -26,15 +27,15 @@ model Club {
 }
 
 model Team {
-  id       String   @id @default(cuid())
-  name     String
-  category String   // "A", "U21", "U19", "U17", "Women"
-  clubId   String
-  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  players  Player[]
-  matches  Match[]
+  id               String            @id @default(cuid())
+  name             String
+  category         String // "A", "U21", "U19", "U17", "Women"
+  clubId           String
+  club             Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  players          Player[]
+  matches          Match[]
   trainingSessions TrainingSession[]
-  setPieces SetPiece[]
+  setPieces        SetPiece[]
 
   @@index([clubId])
 }
@@ -48,12 +49,12 @@ model Player {
   firstName     String
   lastName      String
   jerseyNumber  Int
-  position      String       // "GK", "DF", "MF", "FW"
+  position      String // "GK", "DF", "MF", "FW"
   birthDate     DateTime
   nationality   String?
   height        Int?
   weight        Int?
-  preferredFoot String?      // "left", "right", "both"
+  preferredFoot String? // "left", "right", "both"
   marketValue   Int?
   contractEnd   DateTime?
   photo         String?
@@ -66,8 +67,8 @@ model Player {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  @@index([teamId])
   @@unique([teamId, jerseyNumber])
+  @@index([teamId])
 }
 
 model PlayerStat {
@@ -98,34 +99,96 @@ model PlayerStat {
 // =========================================
 
 model Match {
-  id           String       @id @default(cuid())
-  homeTeamId   String
-  awayTeamName String
-  date         DateTime
-  venue        String?
-  competition  String
-  homeScore    Int?
-  awayScore    Int?
-  status       String       // "scheduled", "live", "completed"
-  formation    String?
-  team         Team         @relation(fields: [homeTeamId], references: [id], onDelete: Cascade)
-  events       MatchEvent[]
-  liveData     LiveData[]
-  stats        PlayerStat[]
+  id            String           @id @default(cuid())
+  homeTeamId    String
+  awayTeamName  String
+  date          DateTime
+  venue         String?
+  competition   String
+  homeScore     Int?
+  awayScore     Int?
+  status        String // "scheduled", "live", "completed"
+  formation     String?
+  team          Team             @relation(fields: [homeTeamId], references: [id], onDelete: Cascade)
+  events        MatchEvent[]
+  liveData      LiveData[]
+  stats         PlayerStat[]
   conversations AIConversation[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  videos        MatchVideo[]
+  analyses      Analysis[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([homeTeamId])
   @@index([date])
   @@index([status])
 }
 
+// =========================================
+// VİDEO + AI ANALİZ
+// =========================================
+
+model MatchVideo {
+  id         String     @id @default(cuid())
+  matchId    String
+  filePath   String
+  fileName   String
+  fileSize   Int
+  duration   Int?
+  source     String // "upload" | "screen_capture" | "camera"
+  status     String // "uploading" | "processing" | "done" | "error"
+  progress   Int        @default(0)
+  frameCount Int?
+  errorMsg   String?
+  match      Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  analyses   Analysis[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([matchId])
+  @@index([status])
+}
+
+model Analysis {
+  id          String  @id @default(cuid())
+  matchId     String
+  videoId     String?
+  minute      Int
+  frameNumber Int?
+  timestamp   Float?
+
+  playerCountA Int
+  playerCountB Int
+  confidence   Float
+
+  zonesA Json
+  zonesB Json
+
+  compactnessA Float
+  compactnessB Float
+
+  pressureScore Float
+
+  heatmapA Json?
+  heatmapB Json?
+
+  aiAdvice    String?
+  riskLevel   String? // "low" | "medium" | "high" | "critical"
+  opportunity String?
+
+  match     Match       @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  video     MatchVideo? @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  createdAt DateTime    @default(now())
+
+  @@index([matchId, minute])
+  @@index([videoId, frameNumber])
+}
+
 model MatchEvent {
   id        String   @id @default(cuid())
   matchId   String
   minute    Int
-  type      String   // "goal", "yellow", "red", "sub", "shot", "save"
+  type      String // "goal", "yellow", "red", "sub", "shot", "save"
   playerId  String?
   details   Json?
   match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
@@ -145,7 +208,7 @@ model LiveData {
   matchId   String
   timestamp DateTime
   playerId  String?
-  x         Float    // Saha koordinatı 0-100
+  x         Float // Saha koordinatı 0-100
   y         Float
   speed     Float
   distance  Float
@@ -162,7 +225,7 @@ model Injury {
   id             String    @id @default(cuid())
   playerId       String
   type           String
-  severity       String    // "minor", "moderate", "severe"
+  severity       String // "minor", "moderate", "severe"
   startDate      DateTime
   expectedReturn DateTime?
   actualReturn   DateTime?
@@ -177,11 +240,11 @@ model FitnessLog {
   id         String   @id @default(cuid())
   playerId   String
   date       DateTime
-  fatigue    Int      // 1-100
+  fatigue    Int // 1-100
   sleepHours Float?
   restingHR  Int?
-  rpe        Int?     // Rate of Perceived Exertion 1-10
-  acwr       Float?   // Akut/Kronik yük oranı
+  rpe        Int? // Rate of Perceived Exertion 1-10
+  acwr       Float? // Akut/Kronik yük oranı
   notes      String?
   player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
@@ -196,9 +259,9 @@ model TrainingSession {
   id        String   @id @default(cuid())
   teamId    String
   date      DateTime
-  type      String   // "tactical", "physical", "technical", "recovery"
-  duration  Int      // dakika
-  intensity Int      // 1-10
+  type      String // "tactical", "physical", "technical", "recovery"
+  duration  Int // dakika
+  intensity Int // 1-10
   drills    Json
   notes     String?
   team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -231,7 +294,7 @@ model Opponent {
 model SetPiece {
   id          String   @id @default(cuid())
   teamId      String
-  type        String   // "corner", "freekick", "throwin"
+  type        String // "corner", "freekick", "throwin"
   diagram     Json
   successRate Float?
   notes       String?
@@ -287,12 +350,12 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 

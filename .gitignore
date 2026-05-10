@@ -39,9 +39,23 @@ next-env.d.ts
 
 # Prisma
 /prisma/migrations/dev.db*
+/prisma/dev.db
+/prisma/dev.db-journal
 
 # IDE
 .idea
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Python
+apps/python/.venv/
+apps/python/__pycache__/
+apps/python/**/__pycache__/
+apps/python/*.pyc
+apps/python/yolov8*.pt
+
+# Yüklenen videolar ve frame'ler
+/uploads/videos/*
+/uploads/frames/*
+!/uploads/.gitignore

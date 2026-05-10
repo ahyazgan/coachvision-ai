@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
+  Video,
   Radio,
   ClipboardList,
   Users,
@@ -26,6 +27,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Pano', icon: LayoutDashboard },
+  { href: '/video', label: 'Video Analizi', icon: Video },
   { href: '/live', label: 'Canlı Maç', icon: Radio },
   { href: '/tactics', label: 'Taktik Tahtası', icon: ClipboardList },
   { href: '/squad', label: 'Kadro', icon: Users },

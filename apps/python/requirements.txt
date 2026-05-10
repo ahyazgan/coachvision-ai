@@ -1,0 +1,15 @@
+# Python 3.11+ uyumlu sürümler
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+opencv-python>=4.10.0
+ultralytics>=8.3.0
+numpy>=2.1.0
+scikit-learn>=1.5.0
+mss>=10.0.0
+ffmpeg-python>=0.2.0
+anthropic>=0.40.0
+python-multipart>=0.0.12
+websockets>=13.0
+Pillow>=11.0.0
+python-dotenv>=1.0.1
+pydantic>=2.9.0
