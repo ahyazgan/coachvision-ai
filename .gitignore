@@ -59,3 +59,6 @@ apps/python/yolov8*.pt
 /uploads/videos/*
 /uploads/frames/*
 !/uploads/.gitignore
+
+# Python çalışma dizininden oluşan analiz dosyaları
+apps/python/uploads/
