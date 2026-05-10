@@ -12,8 +12,10 @@ from typing import Optional
 import numpy as np
 from ultralytics import YOLO
 
-CONF_THRESHOLD = 0.4
+CONF_THRESHOLD = 0.25  # Düşük tutuldu — futbolda uzaktaki ufak oyuncular için
 PERSON_CLASS = 0
+# YOLOv8 çıkarım çözünürlüğü. Varsayılan 640; 1280 küçük/uzak hedefleri çok daha iyi yakalar.
+INFERENCE_SIZE = 1280
 # Bir frame'in "anlamlı" sayılması için minimum oyuncu sayısı
 # (Altındakiler kesim/zoom/replay sayılır, DB'ye yazılmaz.)
 MIN_PLAYERS_PER_FRAME = 4
@@ -53,7 +55,13 @@ def _get_model() -> YOLO:
 def detect_players(frame: np.ndarray) -> list[Detection]:
     """Bir BGR frame'de oyuncuları tespit et."""
     model = _get_model()
-    results = model.predict(frame, verbose=False, conf=CONF_THRESHOLD, classes=[PERSON_CLASS])
+    results = model.predict(
+        frame,
+        verbose=False,
+        conf=CONF_THRESHOLD,
+        classes=[PERSON_CLASS],
+        imgsz=INFERENCE_SIZE,
+    )
     detections: list[Detection] = []
     for r in results:
         if r.boxes is None:
