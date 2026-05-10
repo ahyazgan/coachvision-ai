@@ -110,7 +110,7 @@ export default async function VideoResultPage({ params }: PageProps) {
 
 function PreviewCard({ videoId }: { videoId: string }) {
   return (
-    <details className="rounded-lg border border-border bg-card p-4">
+    <details open className="rounded-lg border border-border bg-card p-4">
       <summary className="cursor-pointer text-sm font-medium hover:text-primary">
         AI ne gördü? — YOLOv8 tespit ön izlemesi
       </summary>
