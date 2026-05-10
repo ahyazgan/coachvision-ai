@@ -60,5 +60,8 @@ apps/python/yolov8*.pt
 /uploads/frames/*
 !/uploads/.gitignore
 
+# Pipeline ön izleme görselleri (her video için)
+/public/previews/
+
 # Python çalışma dizininden oluşan analiz dosyaları
 apps/python/uploads/

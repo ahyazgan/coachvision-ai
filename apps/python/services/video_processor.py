@@ -26,7 +26,7 @@ import httpx
 from ai.claude_client import ask
 from ai.prompts import COACH_SYSTEM_PROMPT, build_frame_analysis_prompt
 from services.pitch_detector import detect_pitch
-from services.player_detector import detect_players
+from services.player_detector import MIN_PLAYERS_PER_FRAME, Detection, detect_players
 from services.team_classifier import classify_teams
 from services.zone_analyzer import FrameMetrics, compute_metrics
 
@@ -35,6 +35,9 @@ ProgressCb = Callable[[str, dict], Awaitable[None]]
 FRAME_INTERVAL_SECONDS = int(os.getenv("FRAME_INTERVAL_SECONDS", "2"))
 ANALYSIS_OUTPUT_DIR = Path(os.getenv("ANALYSIS_OUTPUT_DIR", "./uploads/analyses"))
 NEXTJS_CALLBACK_URL = os.getenv("NEXTJS_CALLBACK_URL", "http://localhost:3000")
+# Next.js public klasörü — debug görsel buraya yazılır, browser'dan /previews/<id>.jpg ile erişilir
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PREVIEW_DIR = PROJECT_ROOT / "public" / "previews"
 
 
 async def process_video(
@@ -95,6 +98,8 @@ def _run_pipeline_sync(
 
     target_frames = max(1, total_frames // step)
     analyzed: list[dict] = []
+    skipped_count = 0
+    preview_saved = False
     frame_idx = 0
     processed = 0
 
@@ -104,22 +109,33 @@ def _run_pipeline_sync(
             if not ret:
                 break
             if frame_idx % step == 0:
-                metrics = _analyze_frame(frame)
-                analyzed.append({
-                    "minute": int((frame_idx / fps) // 60),
-                    "second": int((frame_idx / fps) % 60),
-                    "frame_number": frame_idx,
-                    "timestamp": frame_idx / fps,
-                    **_metrics_to_dict(metrics),
-                })
+                detections, metrics = _analyze_frame(frame)
+                player_total = len(detections)
+
+                # En kalabalık ilk frame'i debug ön izlemesi olarak kaydet
+                if not preview_saved and player_total >= MIN_PLAYERS_PER_FRAME:
+                    _save_preview(video_id, frame, detections)
+                    preview_saved = True
+
+                # Boş/zoom/replay frame'lerini at — anlamsız metrik üretiyorlar
+                if player_total < MIN_PLAYERS_PER_FRAME:
+                    skipped_count += 1
+                else:
+                    analyzed.append({
+                        "minute": int((frame_idx / fps) // 60),
+                        "second": int((frame_idx / fps) % 60),
+                        "frame_number": frame_idx,
+                        "timestamp": frame_idx / fps,
+                        **_metrics_to_dict(metrics),
+                    })
                 processed += 1
                 pct = min(90, int(10 + (processed / target_frames) * 80))
-                # Progress'i sync thread'den async loop'a gönder
                 _schedule_progress(loop, progress_cb, video_id, {
                     "status": "processing",
                     "progress": pct,
                     "stage": "analyzing",
-                    "frames_analyzed": processed,
+                    "frames_analyzed": len(analyzed),
+                    "frames_skipped": skipped_count,
                 })
             frame_idx += 1
     finally:
@@ -130,19 +146,50 @@ def _run_pipeline_sync(
         "duration_sec": duration_sec,
         "total_frames": total_frames,
         "frames_analyzed": len(analyzed),
+        "frames_skipped": skipped_count,
+        "preview_saved": preview_saved,
         "frames": analyzed,
     }
 
 
-def _analyze_frame(frame) -> FrameMetrics:
-    """Tek bir frame'in tüm metriklerini hesapla."""
+def _analyze_frame(frame) -> tuple[list[Detection], FrameMetrics]:
+    """Tek bir frame'in tüm metriklerini hesapla.
+
+    Tespit listesini de döner — preview/log için kullanılır.
+    """
     detections = detect_players(frame)
     pitch = detect_pitch(frame)
     if detections:
         labels, _ = classify_teams(frame, detections)
     else:
         labels = []
-    return compute_metrics(detections, labels, pitch, frame.shape[:2])
+    metrics = compute_metrics(detections, labels, pitch, frame.shape[:2])
+    return detections, metrics
+
+
+def _save_preview(video_id: str, frame, detections: list[Detection]) -> None:
+    """YOLOv8 tespitlerini frame üstüne çiz ve public/previews altına yaz."""
+    try:
+        PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        annotated = frame.copy()
+        for det in detections:
+            x1, y1, x2, y2 = det.crop_box
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 229, 255), 2)
+            cv2.putText(
+                annotated,
+                f"{det.confidence:.2f}",
+                (x1, max(15, y1 - 6)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 229, 255),
+                1,
+                cv2.LINE_AA,
+            )
+        out = PREVIEW_DIR / f"{video_id}.jpg"
+        cv2.imwrite(str(out), annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    except Exception:
+        # Preview üretilememesi pipeline'ı düşürmesin
+        pass
 
 
 def _metrics_to_dict(m: FrameMetrics) -> dict:

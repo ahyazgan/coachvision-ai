@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import path from 'node:path'
+import { existsSync } from 'node:fs'
 import { ArrowLeft, FileVideo, Clock, AlertCircle, Loader2 } from 'lucide-react'
 import { prisma } from '@/lib/db/client'
 import { AnalysisDashboard } from '@/components/video/AnalysisDashboard'
@@ -67,8 +69,20 @@ export default async function VideoResultPage({ params }: PageProps) {
 
       {video.status === 'done' && video.analyses.length === 0 && (
         <div className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
-          Analiz tamamlandı ama görüntüde tespit edilebilen oyuncu bulunamadı.
-          Video kalitesini, kamera açısını veya sahanın yeşil görünürlüğünü kontrol edin.
+          Analiz tamamlandı ama anlamlı frame bulunamadı (her frame'de 4'ten az oyuncu tespit edildi).
+          Bu genellikle özet/highlight videolarında olur — kamera sürekli zoom, tekrar veya kesim yapar.
+          Sabit kameralı tribün üstü çekim deneyin.
+        </div>
+      )}
+
+      {existsSync(path.join(process.cwd(), 'public', 'previews', `${video.id}.jpg`)) && (
+        <PreviewCard videoId={video.id} />
+      )}
+
+      {video.frameCount && video.analyses.length < video.frameCount && (
+        <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+          {video.frameCount - video.analyses.length} frame atlandı (kesim/zoom/replay — 4'ten az oyuncu).
+          Sadece {video.analyses.length} anlamlı frame analiz edildi.
         </div>
       )}
 
@@ -91,6 +105,28 @@ export default async function VideoResultPage({ params }: PageProps) {
         />
       )}
     </div>
+  )
+}
+
+function PreviewCard({ videoId }: { videoId: string }) {
+  return (
+    <details className="rounded-lg border border-border bg-card p-4">
+      <summary className="cursor-pointer text-sm font-medium hover:text-primary">
+        AI ne gördü? — YOLOv8 tespit ön izlemesi
+      </summary>
+      <div className="mt-3 space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Pipeline'ın bulduğu ilk kalabalık karenin işaretli hali. Cyan kutular = tespit edilen
+          oyuncu, üstündeki sayı = güven skoru (0.4+).
+        </p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/previews/${videoId}.jpg`}
+          alt="YOLOv8 tespit ön izlemesi"
+          className="w-full max-w-2xl rounded-md border border-border"
+        />
+      </div>
+    </details>
   )
 }
 

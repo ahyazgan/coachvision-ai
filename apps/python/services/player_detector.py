@@ -12,8 +12,11 @@ from typing import Optional
 import numpy as np
 from ultralytics import YOLO
 
-CONF_THRESHOLD = 0.6
+CONF_THRESHOLD = 0.4
 PERSON_CLASS = 0
+# Bir frame'in "anlamlı" sayılması için minimum oyuncu sayısı
+# (Altındakiler kesim/zoom/replay sayılır, DB'ye yazılmaz.)
+MIN_PLAYERS_PER_FRAME = 4
 
 _model: Optional[YOLO] = None
 _lock = Lock()

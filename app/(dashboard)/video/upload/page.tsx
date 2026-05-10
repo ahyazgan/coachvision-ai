@@ -22,13 +22,20 @@ export default function VideoUploadPage() {
 
       <VideoUploader />
 
-      <aside className="rounded-md border border-border bg-card/40 p-4 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground mb-2">İpuçları</p>
-        <ul className="list-disc space-y-1 pl-5">
-          <li>Sabit kameralı (tribün üstü) çekimler en iyi sonuç verir.</li>
+      <aside className="rounded-md border border-warning/30 bg-warning/10 p-4 text-sm">
+        <p className="mb-2 font-medium text-warning">⚠️ En iyi sonuç için</p>
+        <ul className="list-disc space-y-1 pl-5 text-foreground/90">
+          <li>
+            <strong>Sabit kameralı tribün üstü çekim</strong> kullan — sahanın tamamı veya
+            yarısı sürekli görünmeli.
+          </li>
+          <li>
+            <strong>Highlight/özet videolar uygun değil</strong> — kamera sürekli zoom yapıp
+            tekrarlar/kesimler eklediği için pipeline çoğu frame'i atar (her takımdan en az 4
+            oyuncu görünmeyen frame'ler analiz dışı kalır).
+          </li>
           <li>Yayın kalitesi 720p ve üzeri olmalı.</li>
-          <li>Tam maç yerine sadece highlight da yükleyebilirsin.</li>
-          <li>Analiz süresi video uzunluğunun yaklaşık 1/4'ü kadardır.</li>
+          <li>Analiz süresi video uzunluğunun yaklaşık 1/4-1/2'si kadar.</li>
         </ul>
       </aside>
     </div>
