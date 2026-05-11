@@ -27,12 +27,60 @@ const PreviewSchema = z.object({
   outliers: z.number().int().optional(),
 })
 
+const SegmentSchema = z.object({
+  minute_from: z.number().int(),
+  minute_to: z.number().int(),
+  frames_count: z.number().int(),
+  avg_count_a: z.number(),
+  avg_count_b: z.number(),
+  avg_compactness_a: z.number(),
+  avg_compactness_b: z.number(),
+  pressure_avg: z.number(),
+  pressure_min: z.number(),
+  pressure_max: z.number(),
+  advice: z.string(),
+})
+
+const TrackSchema = z.object({
+  id: z.number().int(),
+  team: z.number().int(),
+  frames: z.number().int(),
+  pixel_distance: z.number(),
+  active_from_minute: z.number().int(),
+  active_to_minute: z.number().int(),
+  avg_confidence: z.number(),
+})
+
+const BallEventSchema = z.object({
+  minute: z.number().int(),
+  timestamp_sec: z.number(),
+  type: z.literal('possession_switch'),
+  from_team: z.number().int(),
+  to_team: z.number().int(),
+})
+
+const BallStatsSchema = z.object({
+  frames_with_ball: z.number().int(),
+  frames_total: z.number().int(),
+  ball_visibility: z.number(),
+  possession: z.object({
+    a: z.number(),
+    b: z.number(),
+    unknown: z.number(),
+  }),
+  zone_counts: z.record(z.string(), z.number()),
+  events: z.array(BallEventSchema),
+})
+
 const PayloadSchema = z.object({
   frames_analyzed: z.number().int(),
   frames_skipped: z.number().int().optional(),
   duration_sec: z.number().optional(),
   frames: z.array(FrameSchema),
   ai_advice: z.string().nullable().optional(),
+  segments: z.array(SegmentSchema).optional(),
+  tracks: z.array(TrackSchema).optional(),
+  ball_stats: BallStatsSchema.nullable().optional(),
   previews: z.array(PreviewSchema).optional(),
 })
 
@@ -83,11 +131,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           progress: 100,
           frameCount: data.frames_analyzed,
           duration: data.duration_sec ? Math.round(data.duration_sec) : null,
+          segmentAdvice: data.segments && data.segments.length > 0
+            ? (data.segments as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          playerTracks: data.tracks && data.tracks.length > 0
+            ? (data.tracks as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          ballStats: data.ball_stats
+            ? (data.ball_stats as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         },
       }),
     ])
 
-    // AI özeti varsa son analiz kaydına bağla
+    // AI özeti varsa son analiz kaydına bağla (geriye dönük uyumluluk)
     if (data.ai_advice && analyses.length > 0) {
       const lastMinute = Math.max(...analyses.map((a) => a.minute))
       await prisma.analysis.updateMany({

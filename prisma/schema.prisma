@@ -129,21 +129,27 @@ model Match {
 // =========================================
 
 model MatchVideo {
-  id         String     @id @default(cuid())
-  matchId    String
-  filePath   String
-  fileName   String
-  fileSize   Int
-  duration   Int?
-  source     String // "upload" | "screen_capture" | "camera"
-  status     String // "uploading" | "processing" | "done" | "error"
-  progress   Int        @default(0)
-  frameCount Int?
-  errorMsg   String?
-  match      Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  analyses   Analysis[]
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id             String     @id @default(cuid())
+  matchId        String
+  filePath       String
+  fileName       String
+  fileSize       Int
+  duration       Int?
+  source         String // "upload" | "screen_capture" | "camera"
+  status         String // "uploading" | "processing" | "done" | "error"
+  progress       Int        @default(0)
+  frameCount     Int?
+  errorMsg       String?
+  // Zaman serisi yorumlar — her biri SEGMENT_MINUTES'lik bir dilim
+  segmentAdvice  Json?
+  // Stabil oyuncu track'leri (mesafe/aktiflik/takım); piksel uzayında, normalize değil
+  playerTracks   Json?
+  // Top + sahiplenme yüzdesi + bölge dağılımı + sahiplenme geçişi olayları
+  ballStats      Json?
+  match          Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  analyses       Analysis[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   @@index([matchId])
   @@index([status])

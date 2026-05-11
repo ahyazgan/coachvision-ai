@@ -5,6 +5,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { ArrowLeft, FileVideo, Clock, AlertCircle, Loader2, PlayCircle } from 'lucide-react'
 import { prisma } from '@/lib/db/client'
 import { AnalysisDashboard } from '@/components/video/AnalysisDashboard'
+import type { BallStats, PlayerTrackSummary, SegmentAdvice } from '@/types/video-analysis'
 
 interface PageProps {
   params: { id: string }
@@ -106,6 +107,9 @@ export default async function VideoResultPage({ params }: PageProps) {
             heatmapB: a.heatmapB as number[][] | null,
             aiAdvice: a.aiAdvice,
           }))}
+          segments={(video.segmentAdvice as SegmentAdvice[] | null) ?? []}
+          tracks={(video.playerTracks as PlayerTrackSummary[] | null) ?? []}
+          ballStats={(video.ballStats as BallStats | null) ?? null}
         />
       )}
     </div>
