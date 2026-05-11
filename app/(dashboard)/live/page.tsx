@@ -1,3 +1,4 @@
+import { LiveCameraBroadcast } from '@/components/match/LiveCameraBroadcast'
 import { LiveMatchView } from '@/components/match/LiveMatchView'
 
 export const metadata = {
@@ -10,11 +11,20 @@ export default function LivePage() {
       <div className="space-y-1">
         <h1 className="font-display text-3xl font-bold tracking-tight">Canlı Maç</h1>
         <p className="text-sm text-muted-foreground">
-          Skoru ve olayları gerçek zamanlı takip et, AI Koç sahanı görür.
+          Kamerayı sahaya yönelt — AI olayları yayın üstüne bildirim olarak bindirir.
         </p>
       </div>
 
-      <LiveMatchView />
+      <LiveCameraBroadcast />
+
+      <details className="rounded-lg border border-border bg-card">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium hover:text-primary">
+          Manuel olay girişi & AI Koç sohbeti
+        </summary>
+        <div className="border-t border-border p-4">
+          <LiveMatchView />
+        </div>
+      </details>
     </div>
   )
 }

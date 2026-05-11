@@ -294,9 +294,14 @@ def _frange(start: float, stop: float, step: float):
         t += step
 
 
-def _analyze_frame(
+def analyze_frame_full(
     frame,
 ) -> tuple[list[Detection], Optional[BallDetection], PitchInfo | None, FrameMetrics, list[int]]:
+    """Tek bir frame'de tüm tespit + sınıflandırma + metrikleri çalıştır.
+
+    Hem batch (video upload) hem live (kamera) pipeline tarafından
+    yeniden kullanılır.
+    """
     detections, ball = detect_players_and_ball(frame)
     pitch = detect_pitch(frame)
     if detections:
@@ -305,6 +310,10 @@ def _analyze_frame(
         labels = []
     metrics = compute_metrics(detections, labels, pitch, frame.shape[:2])
     return detections, ball, pitch, metrics, labels
+
+
+# Geriye dönük uyumluluk
+_analyze_frame = analyze_frame_full
 
 
 def _save_preview(
