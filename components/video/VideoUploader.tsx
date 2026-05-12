@@ -63,7 +63,8 @@ export function VideoUploader({ matchId }: VideoUploaderProps) {
     setState({ kind: 'uploading', progress: 0 })
 
     // XHR ile progress yakalama (fetch native progress vermiyor)
-    const result = await new Promise<{ ok: boolean; data: any }>((resolve) => {
+    type UploadResponse = { videoId?: string; error?: string }
+    const result = await new Promise<{ ok: boolean; data: UploadResponse }>((resolve) => {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', '/api/video/upload')
       xhr.upload.onprogress = (e) => {
@@ -89,7 +90,11 @@ export function VideoUploader({ matchId }: VideoUploaderProps) {
       return
     }
 
-    const videoId: string = result.data.videoId
+    const videoId = result.data.videoId
+    if (!videoId) {
+      setState({ kind: 'error', message: 'Sunucu video kimliği döndürmedi' })
+      return
+    }
     setState({ kind: 'processing', videoId, progress: 0 })
     subscribeProgress(videoId, setState)
   }
