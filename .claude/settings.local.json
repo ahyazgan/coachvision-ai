@@ -4,7 +4,8 @@
       "Bash(pnpm create *)",
       "Bash(shopt -s dotglob)",
       "Bash(mv cv-temp/* .)",
-      "Bash(shopt -u dotglob)"
+      "Bash(shopt -u dotglob)",
+      "Bash(curl -s -X POST -w \"\\\\n---STATUS: %{http_code}---\\\\n\" http://localhost:8000/live/start)"
     ]
   }
 }

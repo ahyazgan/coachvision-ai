@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Play, Square, Video, AlertCircle, Circle, Flame, Users } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 const PYTHON_API_URL = process.env.NEXT_PUBLIC_PYTHON_API_URL ?? 'http://localhost:8000'
 const FRAME_INTERVAL_MS = 2000
@@ -288,7 +287,7 @@ export function LiveCameraBroadcast() {
           {running && tickerEvent && (
             <div
               key={`${tickerEvent.minute}-${tickerEvent.second}-${tickerEvent.type}`}
-              className="pointer-events-none absolute inset-x-0 bottom-0 animate-[slideUpFade_0.4s_ease-out] bg-gradient-to-t from-black/95 via-black/70 to-transparent p-3"
+              className="pointer-events-none absolute inset-x-0 bottom-0 animate-in fade-in slide-in-from-bottom-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent p-3 duration-300"
             >
               <div className="flex items-center gap-3">
                 <span className="rounded-md bg-primary px-2 py-0.5 font-mono text-xs font-bold tabular-nums text-primary-foreground">
@@ -324,19 +323,6 @@ export function LiveCameraBroadcast() {
 
       {/* Frame yakalama için gizli canvas */}
       <canvas ref={canvasRef} className="hidden" />
-
-      <style jsx>{`
-        @keyframes slideUpFade {
-          from {
-            opacity: 0;
-            transform: translateY(20%);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
     </section>
   )
 }
