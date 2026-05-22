@@ -22,8 +22,13 @@ from services.ball_analyzer import (
     POSSESSION_SWITCH_DEBOUNCE,
     UNKNOWN_TEAM,
     aggregate_to_dict,
+    analyze_frame_ball,
 )
+from services.match_plan import MatchPlan
+from services.pitch_calibrator import PitchCalibrator
 from services.player_tracker import PlayerTracker
+from services.tactical_rules import RuleEngine, serialize_command
+from services.video_processor import analyze_frame_full
 from services.zone_analyzer import ZONE_NAMES
 
 # Bir oturum son ping'inden N saniye geçmişse temizlenebilir
@@ -56,6 +61,10 @@ class LiveSession:
     # Yüksek pres tetiği için son emit zamanı (sn) — spam önlemek
     last_high_pressure_at: float = -999.0
     events: list[LiveEvent] = field(default_factory=list)
+    # Football Manager mantığı — antrenörün maç planı + sapma motoru.
+    # Plan verilmezse default eşiklerle çalışır (UI plan UI'sı gelene kadar).
+    plan: MatchPlan = field(default_factory=MatchPlan.default)
+    rules: RuleEngine = field(default_factory=RuleEngine)
 
 
 class LiveSessionRegistry:
@@ -206,6 +215,83 @@ def serialize_event(ev: LiveEvent) -> dict:
         "second": ev.second,
         "text": ev.text,
         "details": ev.details,
+    }
+
+
+def process_frame(session: LiveSession, frame) -> dict:
+    """Tek bir canlı frame'i uçtan uca işle — HTTP ve WS endpoint'leri ortak çağırır.
+
+    1. Görüntüden tespit + takım ayrımı + metrik
+    2. Top sahipleme + possession_switch olayı
+    3. Yüksek pres olayı
+    4. Sapma motoru (MatchPlan eşikleri) → taktik komutlar
+    5. Tek dict olarak döner (UI/WS sözleşmesi)
+    """
+    detections, ball, pitch, metrics, labels = analyze_frame_full(frame)
+    player_total = sum(metrics.zones_a.values()) + sum(metrics.zones_b.values())
+
+    session.frame_count += 1
+    elapsed = time.time() - session.started_at
+    match_minute = int(elapsed // 60)
+
+    # Kalibrasyon varsa kompaktlığı GERÇEK metre olarak yeniden hesapla
+    # (yaklaşık metre yerine). Bu yapılırsa tactical_rules eşikleri
+    # güvenilir olur (PROMPT.md R1).
+    if session.plan.calibration is not None:
+        try:
+            calib = PitchCalibrator.from_dict(session.plan.calibration)
+            feet_a = [
+                (d.bbox[0] + d.bbox[2] / 2, d.bbox[1] + d.bbox[3])
+                for d, lbl in zip(detections, labels) if lbl == 0
+            ]
+            feet_b = [
+                (d.bbox[0] + d.bbox[2] / 2, d.bbox[1] + d.bbox[3])
+                for d, lbl in zip(detections, labels) if lbl == 1
+            ]
+            metrics.compactness_a = calib.compactness_m(feet_a)
+            metrics.compactness_b = calib.compactness_m(feet_b)
+        except (ValueError, KeyError):
+            # Bozuk kalibrasyon — sessizce yaklaşık metreye düş
+            pass
+
+    new_events: list[LiveEvent] = []
+    if player_total > 0:
+        ball_info = analyze_frame_ball(
+            ball=ball,
+            detections=detections,
+            team_labels=labels,
+            pitch=pitch,
+            frame_shape=frame.shape[:2],
+            minute=match_minute,
+            timestamp_sec=elapsed,
+        )
+        new_events.extend(update_session_with_ball_info(session, ball_info))
+
+    pressure_event = maybe_emit_pressure_event(
+        session, metrics.pressure_score, match_minute, elapsed,
+    )
+    if pressure_event is not None:
+        new_events.append(pressure_event)
+
+    # Sapma kontrolü — kullanıcının planından gelen eşiklere göre
+    commands = session.rules.evaluate(metrics, session.plan, match_minute, elapsed)
+
+    return {
+        "session_id": session.id,
+        "frame_count": session.frame_count,
+        "match_minute": match_minute,
+        "metrics": {
+            "player_count_a": sum(metrics.zones_a.values()),
+            "player_count_b": sum(metrics.zones_b.values()),
+            "compactness_a": round(metrics.compactness_a, 1),
+            "compactness_b": round(metrics.compactness_b, 1),
+            "pressure_score": round(metrics.pressure_score, 1),
+            "outlier_count": metrics.outlier_count,
+        },
+        "ball_detected": ball is not None,
+        "new_events": [serialize_event(ev) for ev in new_events],
+        "commands": [serialize_command(c) for c in commands],
+        "scoreboard": serialize_session_summary(session),
     }
 
 

@@ -1,7 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Play, Square, Video, AlertCircle, Circle, Flame, Users } from 'lucide-react'
+import {
+  Play,
+  Square,
+  Video,
+  AlertCircle,
+  Circle,
+  Flame,
+  Users,
+  AlertTriangle,
+  ShieldAlert,
+  Sparkles,
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const PYTHON_API_URL = process.env.NEXT_PUBLIC_PYTHON_API_URL ?? 'http://localhost:8000'
 const FRAME_INTERVAL_MS = 2000
@@ -13,6 +25,22 @@ interface LiveEvent {
   text: string
   details: Record<string, unknown>
 }
+
+// Sapma motorundan gelen taktik komut (Football Manager mantığı)
+type CommandSeverity = 'RISK' | 'WARN' | 'OPPORTUNITY'
+
+interface TacticalCommand {
+  rule_id: string
+  severity: CommandSeverity
+  title: string
+  text: string
+  minute: number
+  second: number
+  details: Record<string, unknown>
+}
+
+// Komut UI'da kaç saniye görünür kalır
+const COMMAND_DISPLAY_MS = 12000
 
 interface Scoreboard {
   session_id: string
@@ -42,6 +70,7 @@ interface FrameResponse {
   }
   ball_detected: boolean
   new_events: LiveEvent[]
+  commands: TacticalCommand[]
   scoreboard: Scoreboard
 }
 
@@ -57,10 +86,13 @@ export function LiveCameraBroadcast() {
   const [error, setError] = useState<string | null>(null)
   const [scoreboard, setScoreboard] = useState<Scoreboard | null>(null)
   const [tickerEvent, setTickerEvent] = useState<LiveEvent | null>(null)
+  const [activeCommand, setActiveCommand] = useState<TacticalCommand | null>(null)
+  const [commandHistory, setCommandHistory] = useState<TacticalCommand[]>([])
   const [lastMetrics, setLastMetrics] = useState<FrameResponse['metrics'] | null>(null)
   const [matchMinute, setMatchMinute] = useState<number>(0)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
+  const commandTimeoutRef = useRef<number | null>(null)
 
   // Kamera listesini bir kez çek (izin gerekmez, sadece etiketler boş gelebilir)
   useEffect(() => {
@@ -83,6 +115,10 @@ export function LiveCameraBroadcast() {
     if (tickerTimeoutRef.current !== null) {
       window.clearTimeout(tickerTimeoutRef.current)
       tickerTimeoutRef.current = null
+    }
+    if (commandTimeoutRef.current !== null) {
+      window.clearTimeout(commandTimeoutRef.current)
+      commandTimeoutRef.current = null
     }
     if (videoRef.current?.srcObject instanceof MediaStream) {
       videoRef.current.srcObject.getTracks().forEach((t) => t.stop())
@@ -147,6 +183,19 @@ export function LiveCameraBroadcast() {
         }
         // Ticker 8 saniye sonra otomatik kaybolur
         tickerTimeoutRef.current = window.setTimeout(() => setTickerEvent(null), 8000)
+      }
+      // Sapma komutları — plana göre üretilen taktik uyarılar
+      if (data.commands && data.commands.length > 0) {
+        const cmd = data.commands[data.commands.length - 1]!
+        setActiveCommand(cmd)
+        setCommandHistory((prev) => [...prev.slice(-19), ...data.commands])
+        if (commandTimeoutRef.current !== null) {
+          window.clearTimeout(commandTimeoutRef.current)
+        }
+        commandTimeoutRef.current = window.setTimeout(
+          () => setActiveCommand(null),
+          COMMAND_DISPLAY_MS,
+        )
       }
     } catch {
       // sessizce yut — geçici ağ hatası
@@ -314,11 +363,26 @@ export function LiveCameraBroadcast() {
                 <Circle className="h-3 w-3" aria-hidden />
                 {scoreboard ? `${Math.round(scoreboard.ball.visibility * 100)}%` : '—'}
               </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-white/60">A</span>
+                {lastMetrics.compactness_a.toFixed(0)}m
+                <span className="text-white/40">·</span>
+                <span className="text-white/60">B</span>
+                {lastMetrics.compactness_b.toFixed(0)}m
+              </div>
             </div>
+          )}
+
+          {/* Sapma komutu kartı — Football Manager mantığı, plana göre uyarı */}
+          {running && activeCommand && (
+            <TacticalCommandCard command={activeCommand} />
           )}
         </div>
 
-        <EventLogPanel events={scoreboard?.recent_events ?? []} running={running} />
+        <div className="space-y-4">
+          <CommandLogPanel commands={commandHistory} running={running} />
+          <EventLogPanel events={scoreboard?.recent_events ?? []} running={running} />
+        </div>
       </div>
 
       {/* Frame yakalama için gizli canvas */}
@@ -341,7 +405,7 @@ function EventLogPanel({ events, running }: { events: LiveEvent[]; running: bool
       {events.length === 0 ? (
         <p className="text-xs text-muted-foreground">Henüz olay yok.</p>
       ) : (
-        <ol className="max-h-[420px] space-y-1.5 overflow-y-auto pr-1">
+        <ol className="max-h-[240px] space-y-1.5 overflow-y-auto pr-1">
           {[...events].reverse().map((ev, i) => (
             <li
               key={`${ev.minute}-${ev.second}-${ev.type}-${i}`}
@@ -354,6 +418,138 @@ function EventLogPanel({ events, running }: { events: LiveEvent[]; running: bool
               <span className="font-medium">{ev.text}</span>
             </li>
           ))}
+        </ol>
+      )}
+    </aside>
+  )
+}
+
+// Severity → renk + ikon eşleme (Football Manager kart hissi)
+const SEVERITY_STYLE: Record<
+  CommandSeverity,
+  {
+    icon: typeof ShieldAlert
+    label: string
+    bg: string
+    border: string
+    text: string
+    chip: string
+  }
+> = {
+  RISK: {
+    icon: ShieldAlert,
+    label: 'RİSK',
+    bg: 'bg-danger/15',
+    border: 'border-danger/60',
+    text: 'text-danger',
+    chip: 'bg-danger text-primary-foreground',
+  },
+  WARN: {
+    icon: AlertTriangle,
+    label: 'DİKKAT',
+    bg: 'bg-amber-500/15',
+    border: 'border-amber-500/60',
+    text: 'text-amber-400',
+    chip: 'bg-amber-500 text-black',
+  },
+  OPPORTUNITY: {
+    icon: Sparkles,
+    label: 'FIRSAT',
+    bg: 'bg-emerald-500/15',
+    border: 'border-emerald-500/60',
+    text: 'text-emerald-400',
+    chip: 'bg-emerald-500 text-black',
+  },
+}
+
+function TacticalCommandCard({ command }: { command: TacticalCommand }) {
+  const style = SEVERITY_STYLE[command.severity]
+  const Icon = style.icon
+  return (
+    <div
+      key={`${command.rule_id}-${command.minute}-${command.second}`}
+      className={cn(
+        'pointer-events-none absolute left-1/2 top-12 -translate-x-1/2',
+        'animate-in fade-in slide-in-from-top-4 duration-300',
+        'flex max-w-md items-center gap-3 rounded-lg border-2 px-4 py-2.5 shadow-xl backdrop-blur-sm',
+        style.bg,
+        style.border,
+      )}
+    >
+      <Icon className={cn('h-6 w-6 shrink-0', style.text)} aria-hidden />
+      <div className="space-y-0.5">
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              'rounded px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider',
+              style.chip,
+            )}
+          >
+            {style.label}
+          </span>
+          <span className="font-mono text-[11px] text-white/80 tabular-nums">
+            {String(command.minute).padStart(2, '0')}'
+            {String(command.second).padStart(2, '0')}
+          </span>
+        </div>
+        <div className="font-display text-base font-semibold leading-tight text-white">
+          {command.title}
+        </div>
+        <div className="text-xs text-white/80">{command.text}</div>
+      </div>
+    </div>
+  )
+}
+
+function CommandLogPanel({
+  commands,
+  running,
+}: {
+  commands: TacticalCommand[]
+  running: boolean
+}) {
+  if (!running) {
+    return (
+      <aside className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+        Plana göre üretilen taktik uyarılar burada toplanır.
+      </aside>
+    )
+  }
+  return (
+    <aside className="rounded-lg border border-border bg-card p-4">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+        <ShieldAlert className="h-4 w-4 text-primary" aria-hidden />
+        Sapma Uyarıları
+      </h3>
+      {commands.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Plana uyuluyor — uyarı yok.</p>
+      ) : (
+        <ol className="max-h-[260px] space-y-1.5 overflow-y-auto pr-1">
+          {[...commands].reverse().map((cmd, i) => {
+            const style = SEVERITY_STYLE[cmd.severity]
+            const Icon = style.icon
+            return (
+              <li
+                key={`${cmd.rule_id}-${cmd.minute}-${cmd.second}-${i}`}
+                className={cn(
+                  'flex items-start gap-2 rounded-md border bg-background/40 px-2 py-1.5 text-xs',
+                  style.border,
+                )}
+              >
+                <Icon className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', style.text)} aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono font-semibold tabular-nums">
+                      {String(cmd.minute).padStart(2, '0')}'
+                      {String(cmd.second).padStart(2, '0')}
+                    </span>
+                    <span className={cn('font-semibold', style.text)}>{cmd.title}</span>
+                  </div>
+                  <div className="truncate text-muted-foreground">{cmd.text}</div>
+                </div>
+              </li>
+            )
+          })}
         </ol>
       )}
     </aside>

@@ -110,6 +110,7 @@ model Match {
   status        String // "scheduled", "live", "completed"
   formation     String?
   team          Team             @relation(fields: [homeTeamId], references: [id], onDelete: Cascade)
+  plan          MatchPlan?
   events        MatchEvent[]
   liveData      LiveData[]
   stats         PlayerStat[]
@@ -122,6 +123,32 @@ model Match {
   @@index([homeTeamId])
   @@index([date])
   @@index([status])
+}
+
+// =========================================
+// MAÇ PLANI (Football Manager mantığı)
+// =========================================
+//
+// Antrenörün maç öncesi kurgusu: diziliş, oyuncu görevleri, takım talimatları
+// ve taktik eşik değerleri. Sapma motoru bu plana göre uyarı üretir.
+// Python tarafı: apps/python/services/match_plan.py (MatchPlan dataclass)
+
+model MatchPlan {
+  id                String   @id @default(cuid())
+  matchId           String   @unique
+  name              String   @default("Varsayılan plan")
+  formation         String // "4-3-3", "4-2-3-1" vb.
+  teamInstructions  Json // TeamInstructions dataclass
+  playerAssignments Json // PlayerAssignment[] dataclass
+  thresholds        Json // TacticalThresholds dataclass
+  // Saha kalibrasyon noktaları (PitchCalibrator.to_dict çıktısı) — opsiyonel
+  calibration       Json?
+  notes             String?
+  match             Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([matchId])
 }
 
 // =========================================
