@@ -1,12 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Play,
   Square,
   Video,
   AlertCircle,
   Circle,
+  ClipboardList,
   Flame,
   Users,
   AlertTriangle,
@@ -74,7 +76,17 @@ interface FrameResponse {
   scoreboard: Scoreboard
 }
 
+interface MatchPlanInfo {
+  name: string
+  opponentName: string
+  // Python /live/start gövdesine gönderilecek tam plan
+  payload: Record<string, unknown>
+}
+
 export function LiveCameraBroadcast() {
+  const searchParams = useSearchParams()
+  const matchIdParam = searchParams.get('match')
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const intervalRef = useRef<number | null>(null)
@@ -92,7 +104,47 @@ export function LiveCameraBroadcast() {
   const [matchMinute, setMatchMinute] = useState<number>(0)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
+  const [planInfo, setPlanInfo] = useState<MatchPlanInfo | null>(null)
   const commandTimeoutRef = useRef<number | null>(null)
+
+  // URL'de ?match=<id> varsa, ona ait kayıtlı planı çek
+  useEffect(() => {
+    if (!matchIdParam) {
+      setPlanInfo(null)
+      return
+    }
+    let aborted = false
+    fetch(`/api/match/${matchIdParam}/plan`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (aborted || !data?.plan) {
+          if (!aborted) setPlanInfo(null)
+          return
+        }
+        const p = data.plan
+        // Prisma JSON → Python MatchPlan.from_dict şekli (snake_case)
+        const payload = {
+          name: p.name,
+          formation: p.formation,
+          team_instructions: p.teamInstructions,
+          player_assignments: p.playerAssignments ?? [],
+          thresholds: p.thresholds,
+          calibration: p.calibration ?? null,
+          notes: p.notes ?? '',
+        }
+        setPlanInfo({
+          name: p.name,
+          opponentName: data.opponentName ?? 'Bilinmeyen',
+          payload,
+        })
+      })
+      .catch(() => {
+        if (!aborted) setPlanInfo(null)
+      })
+    return () => {
+      aborted = true
+    }
+  }, [matchIdParam])
 
   // Kamera listesini bir kez çek (izin gerekmez, sadece etiketler boş gelebilir)
   useEffect(() => {
@@ -214,7 +266,14 @@ export function LiveCameraBroadcast() {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
       }
-      const res = await fetch(`${PYTHON_API_URL}/live/start`, { method: 'POST' })
+      const startBody = planInfo
+        ? { plan: planInfo.payload }
+        : undefined
+      const res = await fetch(`${PYTHON_API_URL}/live/start`, {
+        method: 'POST',
+        headers: startBody ? { 'Content-Type': 'application/json' } : undefined,
+        body: startBody ? JSON.stringify(startBody) : undefined,
+      })
       if (!res.ok) throw new Error('Sunucu oturumu açılamadı (Python servisi çalışıyor mu?)')
       const data = (await res.json()) as { session_id: string }
       sessionIdRef.current = data.session_id
@@ -232,7 +291,7 @@ export function LiveCameraBroadcast() {
     } finally {
       setStarting(false)
     }
-  }, [selectedDeviceId, captureAndSend, stop])
+  }, [selectedDeviceId, captureAndSend, stop, planInfo])
 
   const possession = scoreboard?.ball.possession
   const aPct = possession ? Math.round(possession.a * 100) : 0
@@ -244,6 +303,20 @@ export function LiveCameraBroadcast() {
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3">
         <Video className="h-5 w-5 text-primary" aria-hidden />
         <div className="font-display text-base font-semibold">Canlı Kamera Yayını</div>
+        {planInfo ? (
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+            <ClipboardList className="h-3 w-3" aria-hidden />
+            Plan: {planInfo.name} · vs {planInfo.opponentName}
+          </span>
+        ) : matchIdParam ? (
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">
+            <AlertCircle className="h-3 w-3" aria-hidden /> Plan yüklenemedi · varsayılan eşikler
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            Varsayılan eşikler (plan bağlı değil)
+          </span>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {!running && (
             <select
@@ -266,7 +339,7 @@ export function LiveCameraBroadcast() {
           {running ? (
             <button
               onClick={() => void stop()}
-              className="inline-flex items-center gap-1.5 rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+              className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
             >
               <Square className="h-4 w-4" aria-hidden /> Durdur
             </button>
@@ -283,7 +356,7 @@ export function LiveCameraBroadcast() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <AlertCircle className="h-4 w-4" aria-hidden />
           <span>{error}</span>
         </div>
@@ -310,7 +383,7 @@ export function LiveCameraBroadcast() {
           {running && scoreboard && (
             <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/85 via-black/60 to-transparent p-3">
               <div className="flex items-center gap-3">
-                <span className="rounded-md bg-danger px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase tracking-widest text-primary-foreground">
+                <span className="rounded-md bg-destructive px-1.5 py-0.5 font-mono text-[11px] font-bold uppercase tracking-widest text-primary-foreground">
                   ● Canlı
                 </span>
                 <span className="font-mono text-base font-bold text-white tabular-nums">
@@ -321,9 +394,9 @@ export function LiveCameraBroadcast() {
                   <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-white/20">
                     <div className="bg-primary" style={{ width: `${aPct}%` }} />
                     <div className="bg-white/40" style={{ width: `${uPct}%` }} />
-                    <div className="bg-danger" style={{ width: `${bPct}%` }} />
+                    <div className="bg-destructive" style={{ width: `${bPct}%` }} />
                   </div>
-                  <span className="font-mono font-semibold text-danger">B %{bPct}</span>
+                  <span className="font-mono font-semibold text-destructive">B %{bPct}</span>
                 </div>
                 <span className="font-mono text-[11px] text-white/70 tabular-nums">
                   frame {scoreboard.frames_processed}
@@ -439,10 +512,10 @@ const SEVERITY_STYLE: Record<
   RISK: {
     icon: ShieldAlert,
     label: 'RİSK',
-    bg: 'bg-danger/15',
-    border: 'border-danger/60',
-    text: 'text-danger',
-    chip: 'bg-danger text-primary-foreground',
+    bg: 'bg-destructive/15',
+    border: 'border-destructive/60',
+    text: 'text-destructive',
+    chip: 'bg-destructive text-primary-foreground',
   },
   WARN: {
     icon: AlertTriangle,

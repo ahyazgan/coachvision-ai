@@ -5,6 +5,9 @@ export const metadata = {
   title: 'Canlı Maç',
 }
 
+// useSearchParams (?match=<id> okuma) prerender'la uyuşmaz — dynamic'e zorla
+export const dynamic = 'force-dynamic'
+
 export default function LivePage() {
   return (
     <div className="container space-y-6 py-6">

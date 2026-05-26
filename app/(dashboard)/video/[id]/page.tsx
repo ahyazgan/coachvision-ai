@@ -2,7 +2,15 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import path from 'node:path'
 import { existsSync, readdirSync } from 'node:fs'
-import { ArrowLeft, FileVideo, Clock, AlertCircle, Loader2, PlayCircle } from 'lucide-react'
+import {
+  ArrowLeft,
+  FileVideo,
+  Clock,
+  AlertCircle,
+  Loader2,
+  PlayCircle,
+  ClipboardList,
+} from 'lucide-react'
 import { prisma } from '@/lib/db/client'
 import { AnalysisDashboard } from '@/components/video/AnalysisDashboard'
 import type { BallStats, PlayerTrackSummary, SegmentAdvice } from '@/types/video-analysis'
@@ -55,6 +63,12 @@ export default async function VideoResultPage({ params }: PageProps) {
               {video.analyses.length} / {video.frameCount} frame anlamlı
             </span>
           )}
+          <Link
+            href={`/match/${video.matchId}/plan`}
+            className="ml-auto inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:text-primary"
+          >
+            <ClipboardList className="h-3 w-3" aria-hidden /> Maç Planı
+          </Link>
         </div>
       </header>
 

@@ -65,3 +65,4 @@ apps/python/yolov8*.pt
 
 # Python çalışma dizininden oluşan analiz dosyaları
 apps/python/uploads/
+/yolov8n.pt
