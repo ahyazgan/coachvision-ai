@@ -25,9 +25,10 @@ export async function POST(req: Request, { params }: RouteContext) {
     }
 
     const url = new URL(req.url)
-    const { limit } = QuerySchema.parse({
-      limit: url.searchParams.get('limit'),
-    })
+    // null → undefined: z.coerce.number() null'u 0'a çevirir → min(2) fail eder.
+    // undefined geçerse .default(5) devreye girer.
+    const rawLimit = url.searchParams.get('limit') ?? undefined
+    const { limit } = QuerySchema.parse({ limit: rawLimit })
 
     const progress = await getTeamProgress(params.id, limit)
     if (progress === null) {
