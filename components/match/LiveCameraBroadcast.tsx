@@ -16,6 +16,11 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  HeatmapToggle,
+  LiveHeatmapOverlay,
+  type HeatmapMode,
+} from '@/components/match/LiveHeatmapOverlay'
 
 const PYTHON_API_URL = process.env.NEXT_PUBLIC_PYTHON_API_URL ?? 'http://localhost:8000'
 const FRAME_INTERVAL_MS = 2000
@@ -69,6 +74,9 @@ interface FrameResponse {
     compactness_b: number
     pressure_score: number
     outlier_count: number
+    // Canlı ısı haritası overlay için (Python `zones_a/zones_b`)
+    zones_a?: Record<string, number>
+    zones_b?: Record<string, number>
   }
   ball_detected: boolean
   new_events: LiveEvent[]
@@ -105,6 +113,7 @@ export function LiveCameraBroadcast() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
   const [planInfo, setPlanInfo] = useState<MatchPlanInfo | null>(null)
+  const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('off')
   // Maç bitince finish endpoint sonucu; UI'da rapor linki için
   const [finishStatus, setFinishStatus] = useState<
     | { kind: 'idle' }
@@ -370,12 +379,15 @@ export function LiveCameraBroadcast() {
             </select>
           )}
           {running ? (
-            <button
-              onClick={() => void stop()}
-              className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
-            >
-              <Square className="h-4 w-4" aria-hidden /> Durdur
-            </button>
+            <>
+              <HeatmapToggle mode={heatmapMode} onChange={setHeatmapMode} />
+              <button
+                onClick={() => void stop()}
+                className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                <Square className="h-4 w-4" aria-hidden /> Durdur
+              </button>
+            </>
           ) : (
             <button
               onClick={() => void start()}
@@ -425,6 +437,15 @@ export function LiveCameraBroadcast() {
             muted
             className="aspect-video w-full bg-black object-contain"
           />
+
+          {/* Isı haritası overlay — saha hâkimiyeti 3x3 grid (mode kapalı = render etmez) */}
+          {running && (
+            <LiveHeatmapOverlay
+              zonesA={lastMetrics?.zones_a}
+              zonesB={lastMetrics?.zones_b}
+              mode={heatmapMode}
+            />
+          )}
 
           {!running && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm text-muted-foreground">

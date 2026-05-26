@@ -25,7 +25,6 @@ from services.ball_analyzer import (
     FrameBallInfo,
     POSSESSION_SWITCH_DEBOUNCE,
     UNKNOWN_TEAM,
-    aggregate_to_dict,
     analyze_frame_ball,
 )
 from services.match_plan import MatchPlan
@@ -34,7 +33,6 @@ from services.player_tracker import PlayerTracker
 from services.tactical_rules import RuleEngine, serialize_command
 from services.team_classifier import TeamColorModel
 from services.video_processor import analyze_frame_full
-from services.zone_analyzer import ZONE_NAMES
 
 # Bir oturum son ping'inden N saniye geçmişse temizlenebilir
 SESSION_IDLE_TIMEOUT_SEC = 600.0  # 10 dakika
@@ -314,6 +312,9 @@ def process_frame(session: LiveSession, frame) -> dict:
             "compactness_b": round(metrics.compactness_b, 1),
             "pressure_score": round(metrics.pressure_score, 1),
             "outlier_count": metrics.outlier_count,
+            # Canlı ısı haritası overlay için 3x3 bölge sayımları (LiveHeatmapOverlay)
+            "zones_a": dict(metrics.zones_a),
+            "zones_b": dict(metrics.zones_b),
         },
         "ball_detected": ball is not None,
         "new_events": [serialize_event(ev) for ev in new_events],

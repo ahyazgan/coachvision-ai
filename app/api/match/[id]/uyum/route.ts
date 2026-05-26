@@ -12,9 +12,39 @@ import { askClaude } from '@/lib/ai/claude'
 import {
   MATCH_UYUM_SYSTEM_PROMPT,
   buildMatchUyumUserPrompt,
+  type PlanContext,
 } from '@/lib/ai/match-uyum-prompt'
 import { prisma } from '@/lib/db/client'
 import { complianceToPromptText, computeCompliance } from '@/lib/match-compliance'
+
+/** Prisma'daki MatchPlan'dan Claude prompt context'ini çıkarır. */
+function extractPlanContext(plan: {
+  formation: string
+  teamInstructions: unknown
+  notes: string | null
+}): PlanContext | null {
+  const ti = plan.teamInstructions
+  if (typeof ti !== 'object' || ti === null) return null
+  const t = ti as Record<string, unknown>
+  if (
+    typeof t.defensive_line !== 'string' ||
+    typeof t.pressing !== 'string' ||
+    typeof t.possession_style !== 'string' ||
+    typeof t.width !== 'string' ||
+    typeof t.tempo !== 'string'
+  ) {
+    return null
+  }
+  return {
+    formation: plan.formation,
+    defensiveLine: t.defensive_line,
+    pressing: t.pressing,
+    possessionStyle: t.possession_style,
+    width: t.width,
+    tempo: t.tempo,
+    notes: plan.notes ?? undefined,
+  }
+}
 
 interface RouteContext {
   params: { id: string }
@@ -25,7 +55,14 @@ export async function GET(_req: Request, { params }: RouteContext) {
     const match = await prisma.match.findUnique({
       where: { id: params.id },
       include: {
-        plan: { select: { name: true } },
+        plan: {
+          select: {
+            name: true,
+            formation: true,
+            teamInstructions: true,
+            notes: true,
+          },
+        },
         events: {
           select: { type: true, minute: true, details: true },
           orderBy: [{ minute: 'asc' }, { createdAt: 'asc' }],
@@ -52,8 +89,10 @@ export async function GET(_req: Request, { params }: RouteContext) {
       aiError = 'Henüz veri yok — canlı oturum tamamlanmamış olabilir'
     } else {
       try {
+        const planContext = match.plan ? extractPlanContext(match.plan) : null
         const userPrompt = buildMatchUyumUserPrompt(
           complianceToPromptText(compliance, planName),
+          planContext ?? undefined,
         )
         const { text, usage } = await askClaude({
           systemPrompt: MATCH_UYUM_SYSTEM_PROMPT,
