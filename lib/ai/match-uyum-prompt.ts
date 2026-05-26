@@ -18,7 +18,19 @@ KURALLAR:
 - Plana uyum skoru hakkında bir cümle yorumla
 - Sonda 1 satır vurgu: "Bir sonraki maça hazırlıkta dikkat edilebilir" tarzı
 - Eğer PLAN KİMLİĞİ (diziliş, talimatlar) verildiyse yorumu ona özel yap:
-  örn. "yüksek pres + 4-3-3 planınızda hat açılması özellikle tehlikelidir"`
+  örn. "yüksek pres + 4-3-3 planınızda hat açılması özellikle tehlikelidir"
+- Eğer oyuncu görev atamaları verildiyse ilgili oyuncuyu adıyla referansla:
+  örn. "Hakan'a verdiğiniz box-to-box rolü orta sahanın açılmasına katkı sağlamış olabilir"`
+
+/**
+ * Tek bir görev atamasının insan-okunur özeti — Claude'a giden satır.
+ * Doldurulmuş atamalar prompt'a girer; player_id veya role boş olanlar atlanır.
+ */
+export interface PlanAssignmentSummary {
+  position: string // "GK" | "DF" | "MF" | "FW" (jenerik) veya spesifik
+  role: string
+  playerLabel: string // "#10 Hakan Çalhanoğlu" tarzı
+}
 
 /**
  * Plan kimliği — Claude'a kontekst için.
@@ -31,6 +43,8 @@ export interface PlanContext {
   width: string
   tempo: string
   notes?: string
+  /** Doldurulmuş oyuncu görev atamaları (boş slot'lar dahil değil). */
+  assignments?: PlanAssignmentSummary[]
 }
 
 const READABLE_LINE: Record<string, string> = {
@@ -51,6 +65,7 @@ const READABLE_TEMPO: Record<string, string> = {
 
 /**
  * Plan kimliğini insan-okunur Türkçe metne çevirir (prompt'a girer).
+ * Genel parametreler tek satırda, oyuncu görev atamaları (varsa) ayrı blokta.
  */
 export function formatPlanContext(ctx: PlanContext): string {
   const lines = [
@@ -64,7 +79,17 @@ export function formatPlanContext(ctx: PlanContext): string {
   if (ctx.notes && ctx.notes.trim()) {
     lines.push(`Antrenör notu: ${ctx.notes.trim()}`)
   }
-  return lines.join(' · ')
+  const general = lines.join(' · ')
+
+  if (!ctx.assignments || ctx.assignments.length === 0) {
+    return general
+  }
+
+  // Doldurulmuş oyuncu atamaları — pozisyon-sıralı liste
+  const assignmentLines = ctx.assignments.map(
+    (a) => `- ${a.playerLabel} (${a.position}): ${a.role}`,
+  )
+  return [general, '', 'Oyuncu görevleri:', ...assignmentLines].join('\n')
 }
 
 /**

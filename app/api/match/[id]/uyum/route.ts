@@ -12,17 +12,36 @@ import { askClaude } from '@/lib/ai/claude'
 import {
   MATCH_UYUM_SYSTEM_PROMPT,
   buildMatchUyumUserPrompt,
+  type PlanAssignmentSummary,
   type PlanContext,
 } from '@/lib/ai/match-uyum-prompt'
 import { prisma } from '@/lib/db/client'
 import { complianceToPromptText, computeCompliance } from '@/lib/match-compliance'
 
-/** Prisma'daki MatchPlan'dan Claude prompt context'ini çıkarır. */
-function extractPlanContext(plan: {
+interface PlanRow {
   formation: string
   teamInstructions: unknown
+  playerAssignments: unknown
   notes: string | null
-}): PlanContext | null {
+}
+
+interface PlayerRow {
+  id: string
+  firstName: string
+  lastName: string
+  jerseyNumber: number
+}
+
+/** Prisma'daki MatchPlan'dan Claude prompt context'ini çıkarır.
+ *
+ * `playerLookup`: plan'a atanan player_id'lerin (varsa) DB'den çekilmiş
+ * isim+forma bilgisi. Claude prompt'unda "Hakan #10 (MF): box-to-box" gibi
+ * okunabilir satıra dönüşür.
+ */
+function extractPlanContext(
+  plan: PlanRow,
+  playerLookup: Map<string, PlayerRow>,
+): PlanContext | null {
   const ti = plan.teamInstructions
   if (typeof ti !== 'object' || ti === null) return null
   const t = ti as Record<string, unknown>
@@ -35,6 +54,30 @@ function extractPlanContext(plan: {
   ) {
     return null
   }
+
+  // Doldurulmuş atamaları (oyuncu + rol her ikisi de var) Claude'a geçir
+  const assignments: PlanAssignmentSummary[] = []
+  if (Array.isArray(plan.playerAssignments)) {
+    for (const raw of plan.playerAssignments) {
+      if (typeof raw !== 'object' || raw === null) continue
+      const a = raw as Record<string, unknown>
+      const playerId = typeof a.player_id === 'string' ? a.player_id : null
+      const role = typeof a.role === 'string' ? a.role.trim() : ''
+      const position = typeof a.position === 'string' ? a.position : ''
+      // Hem oyuncu hem rol boşsa atla; en az biri varsa Claude'a faydalı
+      if (!playerId && !role) continue
+      const player = playerId ? playerLookup.get(playerId) : null
+      const label = player
+        ? `#${player.jerseyNumber} ${player.firstName} ${player.lastName}`
+        : '— oyuncu atanmadı —'
+      assignments.push({
+        position: position || '—',
+        role: role || '(rol belirtilmedi)',
+        playerLabel: label,
+      })
+    }
+  }
+
   return {
     formation: plan.formation,
     defensiveLine: t.defensive_line,
@@ -43,6 +86,7 @@ function extractPlanContext(plan: {
     width: t.width,
     tempo: t.tempo,
     notes: plan.notes ?? undefined,
+    assignments: assignments.length > 0 ? assignments : undefined,
   }
 }
 
@@ -60,6 +104,7 @@ export async function GET(_req: Request, { params }: RouteContext) {
             name: true,
             formation: true,
             teamInstructions: true,
+            playerAssignments: true,
             notes: true,
           },
         },
@@ -89,7 +134,31 @@ export async function GET(_req: Request, { params }: RouteContext) {
       aiError = 'Henüz veri yok — canlı oturum tamamlanmamış olabilir'
     } else {
       try {
-        const planContext = match.plan ? extractPlanContext(match.plan) : null
+        // Plan'da atanmış oyuncu ID'lerini topla → DB'den isim/forma çek
+        const playerLookup = new Map<string, PlayerRow>()
+        if (match.plan && Array.isArray(match.plan.playerAssignments)) {
+          const ids: string[] = []
+          for (const raw of match.plan.playerAssignments) {
+            if (
+              typeof raw === 'object' &&
+              raw !== null &&
+              typeof (raw as Record<string, unknown>).player_id === 'string'
+            ) {
+              ids.push((raw as Record<string, unknown>).player_id as string)
+            }
+          }
+          if (ids.length > 0) {
+            const players = await prisma.player.findMany({
+              where: { id: { in: ids } },
+              select: { id: true, firstName: true, lastName: true, jerseyNumber: true },
+            })
+            for (const p of players) playerLookup.set(p.id, p)
+          }
+        }
+
+        const planContext = match.plan
+          ? extractPlanContext(match.plan, playerLookup)
+          : null
         const userPrompt = buildMatchUyumUserPrompt(
           complianceToPromptText(compliance, planName),
           planContext ?? undefined,
