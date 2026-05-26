@@ -175,11 +175,33 @@ model MatchVideo {
   ballStats      Json?
   match          Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
   analyses       Analysis[]
+  validationSamples ValidationSample[]
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
   @@index([matchId])
   @@index([status])
+}
+
+// Manuel olarak elle etiketlenmiş + sistem çıktısıyla karşılaştırılan tek bir kare.
+// PROMPT.md §4 — doğrulama veri seti: AI motoru iddiasını rakamla kanıtlamak için
+// (precision/recall/team-accuracy). Her kayıt: bir an + insan etiketi + sistem çıktısı.
+model ValidationSample {
+  id            String     @id @default(cuid())
+  videoId       String
+  frameTimeSec  Float      // Videodaki saniye konumu
+  // Elle işaretlenmiş gerçek oyuncu konumları (normalize 0..1):
+  //   [{ x: number, y: number, team: "A" | "B" }]
+  groundTruth   Json
+  // Sistemin (YOLO + team classifier) o frame'deki çıktısı:
+  //   [{ x: number, y: number, team: "A" | "B" | null, confidence: number }]
+  systemOutput  Json
+  imageWidth    Int
+  imageHeight   Int
+  video         MatchVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  createdAt     DateTime   @default(now())
+
+  @@index([videoId])
 }
 
 model Analysis {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { askClaude } from '@/lib/ai/claude'
 import { buildMatchContext, COACH_BASE_PROMPT, type MatchContext } from '@/lib/ai/prompts'
+import { requireSession } from '@/lib/auth/require'
 
 const MessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
@@ -25,6 +26,8 @@ const RequestSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireSession()
+    if (guard instanceof NextResponse) return guard
     const body = await req.json()
     const { messages, context } = RequestSchema.parse(body)
 

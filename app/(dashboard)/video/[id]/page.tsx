@@ -10,9 +10,11 @@ import {
   Loader2,
   PlayCircle,
   ClipboardList,
+  Target,
 } from 'lucide-react'
 import { prisma } from '@/lib/db/client'
 import { AnalysisDashboard } from '@/components/video/AnalysisDashboard'
+import { OpponentFormationCard } from '@/components/video/OpponentFormationCard'
 import type { BallStats, PlayerTrackSummary, SegmentAdvice } from '@/types/video-analysis'
 
 interface PageProps {
@@ -69,6 +71,12 @@ export default async function VideoResultPage({ params }: PageProps) {
           >
             <ClipboardList className="h-3 w-3" aria-hidden /> Maç Planı
           </Link>
+          <Link
+            href={`/video/${video.id}/validate`}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:text-primary"
+          >
+            <Target className="h-3 w-3" aria-hidden /> Doğrulama
+          </Link>
         </div>
       </header>
 
@@ -95,6 +103,8 @@ export default async function VideoResultPage({ params }: PageProps) {
       )}
 
       <VideoPlayer videoId={video.id} fileName={video.fileName} />
+
+      <OpponentFormationCard videoId={video.id} />
 
       {previewFiles.length > 0 && <PreviewGallery files={previewFiles} />}
 

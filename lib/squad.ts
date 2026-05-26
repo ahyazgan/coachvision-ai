@@ -16,6 +16,22 @@ import { prisma } from '@/lib/db/client'
 import type { MockPlayer, PlayerPosition } from '@/lib/data/mock-players'
 
 /**
+ * Tek bir oyuncuyu UI-formatında döner; yoksa null.
+ * /squad/[id] sayfası bunu çağırır.
+ */
+export async function getPlayerById(playerId: string): Promise<MockPlayer | null> {
+  const p = await prisma.player.findUnique({
+    where: { id: playerId },
+    include: {
+      injuries: { where: { actualReturn: null }, select: { id: true }, take: 1 },
+      fitnessLogs: { orderBy: { date: 'desc' }, take: 1, select: { fatigue: true } },
+    },
+  })
+  if (!p) return null
+  return toMockPlayer(p)
+}
+
+/**
  * Tek bir takımın kadrosunu UI-formatında döner.
  * teamId verilmezse ilk takımı kullanır (tek-takım MVP).
  */

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { askClaude } from '@/lib/ai/claude'
+import { requireSession } from '@/lib/auth/require'
 import {
   TEAM_PROGRESS_SYSTEM_PROMPT,
   buildTeamProgressUserPrompt,
@@ -17,6 +18,8 @@ interface RouteContext {
 
 export async function POST(req: Request, { params }: RouteContext) {
   try {
+    const guard = await requireSession()
+    if (guard instanceof NextResponse) return guard
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
         { error: 'ANTHROPIC_API_KEY tanımlı değil. .env.local dosyasını kontrol edin.' },

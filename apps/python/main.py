@@ -37,7 +37,7 @@ load_dotenv(_PROJECT_ROOT / ".env", override=False)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import analysis, calibration, live, live_ws, video
+from routers import analysis, calibration, live, live_ws, opponent, validation, video
 
 
 # Aktif WebSocket bağlantıları (video_id -> connections)
@@ -86,6 +86,8 @@ app.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
 app.include_router(live.router, prefix="/live", tags=["live"])
 app.include_router(live_ws.router, prefix="/live", tags=["live-ws"])
 app.include_router(calibration.router, prefix="/calibration", tags=["calibration"])
+app.include_router(validation.router, prefix="/validation", tags=["validation"])
+app.include_router(opponent.router, prefix="/opponent", tags=["opponent"])
 
 
 @app.get("/health")

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { prisma } from '@/lib/db/client'
+import { requireSession } from '@/lib/auth/require'
 
 const MAX_BYTES = (Number(process.env.MAX_VIDEO_SIZE_MB ?? 2000)) * 1024 * 1024
 const UPLOAD_DIR = process.env.VIDEO_UPLOAD_DIR ?? './uploads/videos'
@@ -20,6 +21,8 @@ export const maxDuration = 300
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireSession()
+    if (guard instanceof NextResponse) return guard
     const form = await req.formData()
     const file = form.get('file')
     const matchIdRaw = form.get('matchId')

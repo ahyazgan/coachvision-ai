@@ -4,20 +4,12 @@ import { AlertTriangle, ArrowLeft, Calendar, Footprints, Ruler, Weight } from 'l
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { PlayerRadar } from '@/components/squad/PlayerRadar'
-import {
-  calculateAge,
-  findMockPlayerById,
-  formatMarketValue,
-  MOCK_PLAYERS,
-} from '@/lib/data/mock-players'
+import { calculateAge, formatMarketValue } from '@/lib/data/mock-players'
+import { getPlayerById } from '@/lib/squad'
 import { cn } from '@/lib/utils'
 
-export function generateStaticParams() {
-  return MOCK_PLAYERS.map((p) => ({ id: p.id }))
-}
-
-export function generateMetadata({ params }: { params: { id: string } }) {
-  const player = findMockPlayerById(params.id)
+export async function generateMetadata({ params }: { params: { id: string } }) {
+  const player = await getPlayerById(params.id)
   if (!player) return { title: 'Oyuncu bulunamadı' }
   return { title: `${player.firstName} ${player.lastName}` }
 }
@@ -25,8 +17,8 @@ export function generateMetadata({ params }: { params: { id: string } }) {
 const FOOT_LABEL = { left: 'Sol', right: 'Sağ', both: 'Her İki' } as const
 const POSITION_LABEL = { GK: 'Kaleci', DF: 'Defans', MF: 'Orta Saha', FW: 'Forvet' } as const
 
-export default function PlayerDetailPage({ params }: { params: { id: string } }) {
-  const player = findMockPlayerById(params.id)
+export default async function PlayerDetailPage({ params }: { params: { id: string } }) {
+  const player = await getPlayerById(params.id)
   if (!player) notFound()
 
   const age = calculateAge(player.birthDate)

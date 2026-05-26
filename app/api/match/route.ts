@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db/client'
+import { requireSession } from '@/lib/auth/require'
 
 const BodySchema = z.object({
   awayTeamName: z.string().min(1).max(80),
@@ -52,6 +53,8 @@ async function resolveHomeTeamId(): Promise<string> {
 
 export async function POST(req: Request) {
   try {
+    const guard = await requireSession()
+    if (guard instanceof NextResponse) return guard
     const body = BodySchema.parse(await req.json())
     const homeTeamId = await resolveHomeTeamId()
 

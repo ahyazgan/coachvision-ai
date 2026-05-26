@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db/client'
+import { requireSession } from '@/lib/auth/require'
 
 const TeamInstructionsSchema = z.object({
   defensive_line: z.enum(['low', 'mid', 'high']),
@@ -84,6 +85,8 @@ export async function GET(_req: Request, { params }: RouteContext) {
 
 export async function PUT(req: Request, { params }: RouteContext) {
   try {
+    const guard = await requireSession()
+    if (guard instanceof NextResponse) return guard
     const match = await prisma.match.findUnique({
       where: { id: params.id },
       select: { id: true },
