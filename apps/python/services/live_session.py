@@ -11,13 +11,17 @@ Stateless API yerine session-based çünkü:
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Optional
 
+log = logging.getLogger(__name__)
+
 from services.ball_analyzer import (
     BallAggregate,
+    BallSmoother,
     FrameBallInfo,
     POSSESSION_SWITCH_DEBOUNCE,
     UNKNOWN_TEAM,
@@ -28,6 +32,7 @@ from services.match_plan import MatchPlan
 from services.pitch_calibrator import PitchCalibrator
 from services.player_tracker import PlayerTracker
 from services.tactical_rules import RuleEngine, serialize_command
+from services.team_classifier import TeamColorModel
 from services.video_processor import analyze_frame_full
 from services.zone_analyzer import ZONE_NAMES
 
@@ -65,6 +70,12 @@ class LiveSession:
     # Plan verilmezse default eşiklerle çalışır (UI plan UI'sı gelene kadar).
     plan: MatchPlan = field(default_factory=MatchPlan.default)
     rules: RuleEngine = field(default_factory=RuleEngine)
+    # Sabit takım renk modeli — ilk N frame'den öğrenir, sonra sabit kalır.
+    # Frame-frame K-means label flickering'i çözer (PROMPT.md R2).
+    team_model: TeamColorModel = field(default_factory=TeamColorModel)
+    # Top tespitini yumuşatır — top kaybolunca son sahibi linger ile koru,
+    # ani sıçramaları (outlier) reddet (PROMPT.md R3).
+    ball_smoother: BallSmoother = field(default_factory=BallSmoother)
 
 
 class LiveSessionRegistry:
@@ -124,7 +135,10 @@ def update_session_with_ball_info(
     if not info.has_ball:
         return new_events
 
-    agg.frames_with_ball += 1
+    # frames_with_ball = GERÇEK görünürlük → smoother'ın inferred frame'lerini sayma.
+    # Possession sayaçları ise smoothed sahip ile güncellenir (linger faydası burada).
+    if not info.inferred:
+        agg.frames_with_ball += 1
     if info.zone:
         agg.zone_counts[info.zone] = agg.zone_counts.get(info.zone, 0) + 1
 
@@ -227,7 +241,9 @@ def process_frame(session: LiveSession, frame) -> dict:
     4. Sapma motoru (MatchPlan eşikleri) → taktik komutlar
     5. Tek dict olarak döner (UI/WS sözleşmesi)
     """
-    detections, ball, pitch, metrics, labels = analyze_frame_full(frame)
+    detections, ball, pitch, metrics, labels = analyze_frame_full(
+        frame, team_model=session.team_model,
+    )
     player_total = sum(metrics.zones_a.values()) + sum(metrics.zones_b.values())
 
     session.frame_count += 1
@@ -240,19 +256,21 @@ def process_frame(session: LiveSession, frame) -> dict:
     if session.plan.calibration is not None:
         try:
             calib = PitchCalibrator.from_dict(session.plan.calibration)
+            # Detection bbox formatı: ayrı x1/y1/x2/y2 alanları.
+            # Ayak konumu = bbox alt-orta noktası (player_detector ile uyumlu).
             feet_a = [
-                (d.bbox[0] + d.bbox[2] / 2, d.bbox[1] + d.bbox[3])
+                ((d.x1 + d.x2) / 2.0, d.y2)
                 for d, lbl in zip(detections, labels) if lbl == 0
             ]
             feet_b = [
-                (d.bbox[0] + d.bbox[2] / 2, d.bbox[1] + d.bbox[3])
+                ((d.x1 + d.x2) / 2.0, d.y2)
                 for d, lbl in zip(detections, labels) if lbl == 1
             ]
             metrics.compactness_a = calib.compactness_m(feet_a)
             metrics.compactness_b = calib.compactness_m(feet_b)
-        except (ValueError, KeyError):
-            # Bozuk kalibrasyon — sessizce yaklaşık metreye düş
-            pass
+        except (ValueError, KeyError) as exc:
+            # Bozuk kalibrasyon — yaklaşık metreye düş, ama haberdar olalım
+            log.warning("Kalibrasyon parse edilemedi, yaklaşık metreye düşüldü: %s", exc)
 
     new_events: list[LiveEvent] = []
     if player_total > 0:
@@ -265,6 +283,9 @@ def process_frame(session: LiveSession, frame) -> dict:
             minute=match_minute,
             timestamp_sec=elapsed,
         )
+        # Top yumuşatma: kaybolduğunda linger + outlier sıçramaları reddet (R3)
+        raw_pos = ball.center if ball is not None else None
+        ball_info = session.ball_smoother.smooth(ball_info, raw_pos)
         new_events.extend(update_session_with_ball_info(session, ball_info))
 
     pressure_event = maybe_emit_pressure_event(

@@ -27,6 +27,14 @@ MAX_POSSESSION_DISTANCE_PX = 120.0
 # takım N kere üst üste görülmeli (gürültü filtresi).
 POSSESSION_SWITCH_DEBOUNCE = 2
 
+# Top tespit edilemediğinde son sahibi koruma süresi (PROMPT.md R3).
+# Bu süre içinde top "hala orada" kabul edilir; sahiplenme inferred sayılır.
+BALL_LINGER_SEC = 2.0
+
+# Bir frame'de top pozisyonu bu kadar piksel sıçrarsa yanlış pozitif sayılır.
+# Top fiziksel olarak 2 sn'de bu kadar yer değiştiremez (tactical çekim).
+BALL_OUTLIER_JUMP_PX = 400.0
+
 UNKNOWN_TEAM = -2  # KMeans outlier -1 ile karıştırmamak için ayrı sentinel
 
 
@@ -39,6 +47,84 @@ class FrameBallInfo:
     zone: Optional[str]  # "top_left" vs.
     possession_team: int  # 0 / 1 / UNKNOWN_TEAM
     nearest_distance_px: Optional[float]
+    # Top gerçek tespit DEĞİL, linger'dan (BallSmoother) geliyorsa True.
+    # Görünürlük sayacı (frames_with_ball) inferred frame'leri saymaz.
+    inferred: bool = False
+
+
+@dataclass
+class BallSmoother:
+    """Top tespitini zaman ekseninde yumuşatır — PROMPT.md R3.
+
+    İki davranış:
+    1. **Linger:** Top kaybolduğunda son sahibi `BALL_LINGER_SEC` boyunca
+       devam ettir. Top oyuncu ayağında 1-2 sn görünmez → gerçekçi.
+    2. **Outlier rejection:** Pozisyon ani sıçraması (>400px) yanlış tespit
+       sayılır → son geçerli pozisyona düş.
+
+    Tek bir LiveSession boyunca yaşar, frame frame state biriktirir.
+    """
+    last_position: Optional[tuple[float, float]] = None
+    last_seen_at: float = -1e9
+    last_possessor: int = UNKNOWN_TEAM  # son geçerli sahip (0/1)
+    last_zone: Optional[str] = None
+    outliers_rejected: int = 0  # tanılama için
+
+    def smooth(
+        self,
+        info: FrameBallInfo,
+        raw_position: Optional[tuple[float, float]] = None,
+    ) -> FrameBallInfo:
+        """Frame ball info'yu sırasıyla yumuşat.
+
+        Args:
+            info: analyze_frame_ball'dan gelen ham çıktı.
+            raw_position: ball.center (varsa) — outlier kontrolü için.
+        """
+        if info.has_ball:
+            # Outlier sıçraması mı?
+            if (
+                raw_position is not None
+                and self.last_position is not None
+                and (info.timestamp_sec - self.last_seen_at) <= BALL_LINGER_SEC
+            ):
+                dx = raw_position[0] - self.last_position[0]
+                dy = raw_position[1] - self.last_position[1]
+                if (dx * dx + dy * dy) ** 0.5 > BALL_OUTLIER_JUMP_PX:
+                    # Yanlış pozitif kabul → eski pozisyonda kalmış gibi davran
+                    self.outliers_rejected += 1
+                    return self._inferred_info(info)
+
+            # Geçerli yeni tespit → state güncelle
+            if raw_position is not None:
+                self.last_position = raw_position
+            self.last_seen_at = info.timestamp_sec
+            if info.possession_team in (0, 1):
+                self.last_possessor = info.possession_team
+                self.last_zone = info.zone
+            return info
+
+        # Top yok — linger süresi içindeyse son sahibi devam ettir
+        if (
+            self.last_possessor in (0, 1)
+            and (info.timestamp_sec - self.last_seen_at) <= BALL_LINGER_SEC
+        ):
+            return self._inferred_info(info)
+
+        # Linger süresi de bitti → gerçekten kayıp
+        return info
+
+    def _inferred_info(self, info: FrameBallInfo) -> FrameBallInfo:
+        """Son bilinen sahibe dayalı "hala orada" FrameBallInfo üret."""
+        return FrameBallInfo(
+            minute=info.minute,
+            timestamp_sec=info.timestamp_sec,
+            has_ball=True,
+            zone=self.last_zone,
+            possession_team=self.last_possessor,
+            nearest_distance_px=None,
+            inferred=True,
+        )
 
 
 @dataclass

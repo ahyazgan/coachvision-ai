@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 import cv2
 import httpx
+
+log = logging.getLogger(__name__)
 
 from ai.claude_client import ask
 from ai.prompts import (
@@ -43,7 +46,12 @@ from services.player_detector import (
     detect_players_and_ball,
 )
 from services.player_tracker import PlayerTrack, PlayerTracker
-from services.team_classifier import OUTLIER_LABEL, classify_teams
+from services.team_classifier import (
+    OUTLIER_LABEL,
+    TeamColorModel,
+    classify_teams,
+    classify_with_model,
+)
 from services.zone_analyzer import FrameMetrics, compute_metrics
 
 ProgressCb = Callable[[str, dict], Awaitable[None]]
@@ -296,16 +304,25 @@ def _frange(start: float, stop: float, step: float):
 
 def analyze_frame_full(
     frame,
+    team_model: Optional[TeamColorModel] = None,
 ) -> tuple[list[Detection], Optional[BallDetection], PitchInfo | None, FrameMetrics, list[int]]:
     """Tek bir frame'de tüm tespit + sınıflandırma + metrikleri çalıştır.
 
     Hem batch (video upload) hem live (kamera) pipeline tarafından
     yeniden kullanılır.
+
+    Args:
+        frame: BGR numpy görüntü
+        team_model: Verilirse oturum-boyu sabit takım renk modeli (PROMPT.md R2)
+            kullanılır → label flickering çözülür. None ise her frame K-means.
     """
     detections, ball = detect_players_and_ball(frame)
     pitch = detect_pitch(frame)
     if detections:
-        labels, _ = classify_teams(frame, detections)
+        if team_model is not None:
+            labels, _ = classify_with_model(frame, detections, team_model)
+        else:
+            labels, _ = classify_teams(frame, detections)
     else:
         labels = []
     metrics = compute_metrics(detections, labels, pitch, frame.shape[:2])
@@ -379,7 +396,8 @@ def _save_preview(
         out = PREVIEW_DIR / name
         cv2.imwrite(str(out), annotated, [cv2.IMWRITE_JPEG_QUALITY, 80])
         return True
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Preview kaydedilemedi (%s): %s", name, exc)
         return False
 
 
@@ -406,8 +424,8 @@ def _schedule_progress(
 ) -> None:
     try:
         asyncio.run_coroutine_threadsafe(progress_cb(video_id, payload), loop)
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        log.debug("İlerleme yayını gönderilemedi (%s): %s", video_id, exc)
 
 
 def _generate_segment_advice(frames: list[dict]) -> list[dict]:
@@ -513,5 +531,5 @@ async def _notify_nextjs(video_id: str, result: dict) -> None:
                 "ball_stats": result.get("ball_stats"),
                 "previews": result.get("previews", []),
             })
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Next.js callback başarısız (%s): %s", video_id, exc)

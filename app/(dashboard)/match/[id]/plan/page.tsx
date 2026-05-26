@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, ClipboardList, Radio } from 'lucide-react'
+import { ArrowLeft, Check, ClipboardList, Compass, Radio } from 'lucide-react'
 import { prisma } from '@/lib/db/client'
 import { MatchPlanForm, type PlanPayload } from '@/components/match/MatchPlanForm'
 
@@ -56,11 +56,43 @@ export default async function MatchPlanPage({ params }: PageProps) {
         </p>
       </header>
 
+      <CalibrationStatus matchId={match.id} calibrated={match.plan?.calibration != null} />
+
       <MatchPlanForm
         matchId={match.id}
         opponentName={match.awayTeamName}
         initial={initial}
       />
+    </div>
+  )
+}
+
+function CalibrationStatus({ matchId, calibrated }: { matchId: string; calibrated: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-4">
+      <Compass className="h-5 w-5 text-primary" aria-hidden />
+      <div className="flex-1 space-y-0.5">
+        <h2 className="font-display text-base font-semibold">Saha Kalibrasyonu</h2>
+        {calibrated ? (
+          <p className="inline-flex items-center gap-1 text-xs text-success">
+            <Check className="h-3 w-3" aria-hidden /> Kalibre — kompaktlık gerçek metre cinsinden hesaplanıyor
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Kalibre değil — kompaktlık yaklaşık metre. Eşiklerin güvenilirliği için 4 noktayı işaretle.
+          </p>
+        )}
+      </div>
+      <Link
+        href={`/match/${matchId}/calibrate`}
+        className={
+          calibrated
+            ? 'inline-flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs hover:text-foreground'
+            : 'inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90'
+        }
+      >
+        {calibrated ? 'Düzenle' : 'Kalibrasyon yap'}
+      </Link>
     </div>
   )
 }

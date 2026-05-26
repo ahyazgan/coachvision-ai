@@ -12,13 +12,22 @@ if sys.stdout.encoding != "utf-8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
-import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Set
 
 from dotenv import load_dotenv
+
+# Tek noktada logging yapılandır — PROMPT.md R5. Tüm modüller getLogger
+# çağırdığında bu config'e düşer. Ortam değişkeni LOG_LEVEL ile override.
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)-7s %(name)s : %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("coachvision")
 
 # Proje kökündeki .env.local'i yükle (ANTHROPIC_API_KEY vs.)
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -28,7 +37,7 @@ load_dotenv(_PROJECT_ROOT / ".env", override=False)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import analysis, live, live_ws, video
+from routers import analysis, calibration, live, live_ws, video
 
 
 # Aktif WebSocket bağlantıları (video_id -> connections)
@@ -36,17 +45,25 @@ _progress_subscribers: Dict[str, Set[WebSocket]] = {}
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Uygulama açılışı: model yükleme yer tutucusu
-    # YOLOv8 modelini ilk istek geldiğinde lazy yüklüyoruz
+async def lifespan(app: FastAPI):  # noqa: ARG001 — FastAPI imzası gerekli
+    # Açılışta cihaz durumu görünür olsun (R4: GPU varsa 1280, yoksa 960).
+    try:
+        from services.player_detector import get_device_info
+        info = get_device_info()
+        log.info(
+            "Inference cihazı: %s · imgsz=%d · cuda=%s",
+            info["device"], info["inference_size"], info["has_cuda"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Cihaz tanılaması yapılamadı: %s", exc)
     yield
     # Kapanışta açık WS'leri temizle
     for conns in _progress_subscribers.values():
         for ws in list(conns):
             try:
                 await ws.close()
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                log.debug("WS close hatası (yoksayıldı): %s", exc)
 
 
 app = FastAPI(
@@ -68,11 +85,17 @@ app.include_router(video.router, prefix="/video", tags=["video"])
 app.include_router(analysis.router, prefix="/analysis", tags=["analysis"])
 app.include_router(live.router, prefix="/live", tags=["live"])
 app.include_router(live_ws.router, prefix="/live", tags=["live-ws"])
+app.include_router(calibration.router, prefix="/calibration", tags=["calibration"])
 
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "coachvision-python"}
+    from services.player_detector import get_device_info
+    return {
+        "status": "ok",
+        "service": "coachvision-python",
+        "device": get_device_info(),
+    }
 
 
 @app.websocket("/ws/video/{video_id}")
@@ -102,7 +125,8 @@ async def broadcast_progress(video_id: str, payload: dict) -> None:
     for ws in subs:
         try:
             await ws.send_json(payload)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            log.debug("WS send hatası (abone düşürülüyor): %s", exc)
             dead.append(ws)
     for ws in dead:
         subs.discard(ws)
