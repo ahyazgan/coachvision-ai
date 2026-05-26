@@ -66,6 +66,9 @@ class LiveSession:
     # Yüksek pres tetiği için son emit zamanı (sn) — spam önlemek
     last_high_pressure_at: float = -999.0
     events: list[LiveEvent] = field(default_factory=list)
+    # Plana göre üretilen taktik komutlar tarih boyunca biriktirilir;
+    # maç sonu plan-uyum raporu bu listeyi okur.
+    command_history: list[dict] = field(default_factory=list)
     # Football Manager mantığı — antrenörün maç planı + sapma motoru.
     # Plan verilmezse default eşiklerle çalışır (UI plan UI'sı gelene kadar).
     plan: MatchPlan = field(default_factory=MatchPlan.default)
@@ -296,6 +299,9 @@ def process_frame(session: LiveSession, frame) -> dict:
 
     # Sapma kontrolü — kullanıcının planından gelen eşiklere göre
     commands = session.rules.evaluate(metrics, session.plan, match_minute, elapsed)
+    # Maç sonu rapor için komutları history'e biriktir (serialize_command ile)
+    for c in commands:
+        session.command_history.append(serialize_command(c))
 
     return {
         "session_id": session.id,
@@ -337,4 +343,8 @@ def serialize_session_summary(session: LiveSession) -> dict:
         },
         "events_total": len(session.events),
         "recent_events": [serialize_event(ev) for ev in session.events[-20:]],
+        # Plan-uyum raporu için: tüm komutlar + tüm olaylar
+        "commands_total": len(session.command_history),
+        "commands_history": list(session.command_history),
+        "events_history": [serialize_event(ev) for ev in session.events],
     }

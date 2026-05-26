@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, Check, ClipboardList, Compass, Radio } from 'lucide-react'
+import { ArrowLeft, Check, ClipboardList, Compass, ListChecks, Radio } from 'lucide-react'
 import { prisma } from '@/lib/db/client'
 import { MatchPlanForm, type PlanPayload } from '@/components/match/MatchPlanForm'
 
@@ -11,9 +11,12 @@ interface PageProps {
 export default async function MatchPlanPage({ params }: PageProps) {
   const match = await prisma.match.findUnique({
     where: { id: params.id },
-    include: { plan: true },
+    include: { plan: true, _count: { select: { events: true } } },
   })
   if (!match) notFound()
+
+  // Uyum raporu linki sadece DB'ye event yazılmışsa anlamlı
+  const hasEvents = match._count.events > 0
 
   const initial: PlanPayload | null = match.plan
     ? {
@@ -40,14 +43,24 @@ export default async function MatchPlanPage({ params }: PageProps) {
           <h1 className="font-display text-2xl font-bold tracking-tight">
             Maç Planı — vs {match.awayTeamName}
           </h1>
-          {match.plan && (
-            <Link
-              href={`/live?match=${match.id}`}
-              className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
-            >
-              <Radio className="h-4 w-4" aria-hidden /> Canlı yayında kullan
-            </Link>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            {hasEvents && (
+              <Link
+                href={`/match/${match.id}/uyum`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:text-primary"
+              >
+                <ListChecks className="h-4 w-4" aria-hidden /> Plan-Uyum Raporu
+              </Link>
+            )}
+            {match.plan && (
+              <Link
+                href={`/live?match=${match.id}`}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                <Radio className="h-4 w-4" aria-hidden /> Canlı yayında kullan
+              </Link>
+            )}
+          </div>
         </div>
         <p className="text-sm text-muted-foreground">
           Football Manager mantığı: bu plana göre canlı sahadaki sapmalar uyarı olarak

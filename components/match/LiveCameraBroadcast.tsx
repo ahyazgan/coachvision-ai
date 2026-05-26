@@ -105,6 +105,12 @@ export function LiveCameraBroadcast() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
   const [planInfo, setPlanInfo] = useState<MatchPlanInfo | null>(null)
+  // Maç bitince finish endpoint sonucu; UI'da rapor linki için
+  const [finishStatus, setFinishStatus] = useState<
+    | { kind: 'idle' }
+    | { kind: 'saved'; matchId: string }
+    | { kind: 'error'; message: string }
+  >({ kind: 'idle' })
   const commandTimeoutRef = useRef<number | null>(null)
 
   // URL'de ?match=<id> varsa, ona ait kayıtlı planı çek
@@ -179,7 +185,34 @@ export function LiveCameraBroadcast() {
     const sid = sessionIdRef.current
     if (sid) {
       try {
-        await fetch(`${PYTHON_API_URL}/live/stop/${sid}`, { method: 'POST' })
+        const stopRes = await fetch(`${PYTHON_API_URL}/live/stop/${sid}`, { method: 'POST' })
+        // Plan'a bağlı oturumda (?match=<id>) → summary'i DB'ye yaz, uyum raporu link'i göster
+        if (stopRes.ok && matchIdParam) {
+          const stopData = (await stopRes.json()) as { summary?: unknown }
+          if (stopData.summary) {
+            try {
+              const finishRes = await fetch(`/api/match/${matchIdParam}/finish`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ summary: stopData.summary }),
+              })
+              if (finishRes.ok) {
+                setFinishStatus({ kind: 'saved', matchId: matchIdParam })
+              } else {
+                const err = (await finishRes.json().catch(() => ({}))) as { error?: string }
+                setFinishStatus({
+                  kind: 'error',
+                  message: err.error ?? 'Maç kaydedilemedi',
+                })
+              }
+            } catch (e) {
+              setFinishStatus({
+                kind: 'error',
+                message: e instanceof Error ? e.message : 'Ağ hatası',
+              })
+            }
+          }
+        }
       } catch {
         // sessizce yut
       }
@@ -359,6 +392,26 @@ export function LiveCameraBroadcast() {
         <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <AlertCircle className="h-4 w-4" aria-hidden />
           <span>{error}</span>
+        </div>
+      )}
+
+      {finishStatus.kind === 'saved' && (
+        <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm">
+          <Sparkles className="h-4 w-4 text-success" aria-hidden />
+          <span className="flex-1">Maç DB'ye kaydedildi.</span>
+          <a
+            href={`/match/${finishStatus.matchId}/uyum`}
+            className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"
+          >
+            Plan-Uyum Raporunu Aç
+          </a>
+        </div>
+      )}
+
+      {finishStatus.kind === 'error' && (
+        <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+          <AlertCircle className="h-4 w-4" aria-hidden />
+          <span>Maç sonu kaydı başarısız: {finishStatus.message}</span>
         </div>
       )}
 
