@@ -31,9 +31,11 @@ PossessionStyle = Literal["build_up", "balanced", "direct"]
 Width = Literal["narrow", "balanced", "wide"]
 Tempo = Literal["slow", "medium", "fast"]
 
-# Saha pozisyonları — diziliş satırlarıyla uyumlu kısa kodlar
+# Saha pozisyonları — diziliş satırlarıyla uyumlu kısa kodlar.
+# Spesifik (CB, LB, RCM) + jenerik kategoriler (DF, MF, FW) kabul edilir;
+# UI slot generator jenerik kategorilerle çalışır.
 POSITION_CODES = {
-    "GK",
+    "GK", "DF", "MF", "FW",  # jenerik kategoriler
     "RB", "RCB", "CB", "LCB", "LB", "RWB", "LWB",
     "CDM", "RCM", "CM", "LCM", "CAM",
     "RM", "LM", "RW", "LW",

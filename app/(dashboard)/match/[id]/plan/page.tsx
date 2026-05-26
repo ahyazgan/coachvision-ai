@@ -2,7 +2,11 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, Check, ClipboardList, Compass, ListChecks, Radio } from 'lucide-react'
 import { prisma } from '@/lib/db/client'
-import { MatchPlanForm, type PlanPayload } from '@/components/match/MatchPlanForm'
+import {
+  MatchPlanForm,
+  type PlanPayload,
+  type SquadOption,
+} from '@/components/match/MatchPlanForm'
 
 interface PageProps {
   params: { id: string }
@@ -18,12 +22,28 @@ export default async function MatchPlanPage({ params }: PageProps) {
   // Uyum raporu linki sadece DB'ye event yazılmışsa anlamlı
   const hasEvents = match._count.events > 0
 
+  // Plan formundaki "Oyuncu Görevleri" dropdown'ları için aynı takımın kadrosu
+  const dbPlayers = await prisma.player.findMany({
+    where: { teamId: match.homeTeamId },
+    orderBy: [{ position: 'asc' }, { jerseyNumber: 'asc' }],
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      jerseyNumber: true,
+      position: true,
+    },
+  })
+  const availablePlayers: SquadOption[] = dbPlayers
+
   const initial: PlanPayload | null = match.plan
     ? {
         name: match.plan.name,
         formation: match.plan.formation,
         teamInstructions: match.plan.teamInstructions as unknown as PlanPayload['teamInstructions'],
         thresholds: match.plan.thresholds as unknown as PlanPayload['thresholds'],
+        playerAssignments:
+          (match.plan.playerAssignments as unknown as PlanPayload['playerAssignments']) ?? [],
         notes: match.plan.notes ?? '',
       }
     : null
@@ -75,6 +95,7 @@ export default async function MatchPlanPage({ params }: PageProps) {
         matchId={match.id}
         opponentName={match.awayTeamName}
         initial={initial}
+        availablePlayers={availablePlayers}
       />
     </div>
   )

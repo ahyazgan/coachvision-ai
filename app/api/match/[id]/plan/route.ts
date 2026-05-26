@@ -36,6 +36,13 @@ const ThresholdsSchema = z
 
 const FormationRe = /^\d(-\d){1,3}$/
 
+const PlayerAssignmentSchema = z.object({
+  position: z.string().min(1).max(10),
+  role: z.string().max(80).optional().default(''),
+  player_id: z.string().nullable().optional(),
+  instructions: z.array(z.string().max(200)).optional().default([]),
+})
+
 const PlanSchema = z.object({
   name: z.string().min(1).max(100),
   formation: z
@@ -47,6 +54,7 @@ const PlanSchema = z.object({
     ),
   teamInstructions: TeamInstructionsSchema,
   thresholds: ThresholdsSchema,
+  playerAssignments: z.array(PlayerAssignmentSchema).optional().default([]),
   notes: z.string().max(1000).optional().default(''),
 })
 
@@ -94,7 +102,7 @@ export async function PUT(req: Request, { params }: RouteContext) {
         name: data.name,
         formation: data.formation,
         teamInstructions: data.teamInstructions,
-        playerAssignments: [],
+        playerAssignments: data.playerAssignments,
         thresholds: data.thresholds,
         notes: data.notes ?? '',
       },
@@ -102,6 +110,7 @@ export async function PUT(req: Request, { params }: RouteContext) {
         name: data.name,
         formation: data.formation,
         teamInstructions: data.teamInstructions,
+        playerAssignments: data.playerAssignments,
         thresholds: data.thresholds,
         notes: data.notes ?? '',
       },

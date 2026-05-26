@@ -27,11 +27,30 @@ interface Thresholds {
   possession_min_self: number
 }
 
+// Tek oyuncu görevi — formasyon slot'una oyuncu + rol bağlar.
+// Python tarafıyla aynı snake_case alan adları (Pydantic uyum).
+export interface PlayerAssignment {
+  position: string // "GK" | "DF" | "MF" | "FW" (jenerik kategori)
+  role: string // serbest metin, örn. "ball_playing_defender"
+  player_id: string | null
+  instructions: string[]
+}
+
+// Kadrodan dropdown için minimum bilgi
+export interface SquadOption {
+  id: string
+  firstName: string
+  lastName: string
+  jerseyNumber: number
+  position: string
+}
+
 export interface PlanPayload {
   name: string
   formation: string
   teamInstructions: TeamInstructions
   thresholds: Thresholds
+  playerAssignments: PlayerAssignment[]
   notes: string
 }
 
@@ -59,6 +78,62 @@ const DEFAULT_THRESHOLDS: Thresholds = {
 
 const FORMATIONS = ['4-3-3', '4-2-3-1', '4-4-2', '3-5-2', '5-3-2', '3-4-3', '4-3-1-2', '4-1-2-1-2']
 
+/**
+ * Diziliş satırından oyuncu slot'ları üretir.
+ * "4-3-3" → 1 GK + 4 DF + 3 MF + 3 FW = 11 boş atama.
+ *
+ * Slot'lar her diziliş değişiminde yeniden üretilir; mevcut atamalar
+ * pozisyon eşleştiğinde sırayla aktarılır (DF1, DF2 vb.).
+ */
+function generateSlots(formation: string): PlayerAssignment[] {
+  const counts = formation.split('-').map(Number)
+  if (counts.length < 2 || counts.some(isNaN)) return []
+  const slots: PlayerAssignment[] = [
+    { position: 'GK', role: '', player_id: null, instructions: [] },
+  ]
+  // İlk grup = defans
+  for (let i = 0; i < counts[0]!; i++) {
+    slots.push({ position: 'DF', role: '', player_id: null, instructions: [] })
+  }
+  // Aradakiler = orta saha (3-5-2 gibi tek orta grup veya 4-2-3-1 gibi iki orta grup)
+  for (const g of counts.slice(1, -1)) {
+    for (let i = 0; i < g; i++) {
+      slots.push({ position: 'MF', role: '', player_id: null, instructions: [] })
+    }
+  }
+  // Son grup = forvet
+  for (let i = 0; i < counts[counts.length - 1]!; i++) {
+    slots.push({ position: 'FW', role: '', player_id: null, instructions: [] })
+  }
+  return slots
+}
+
+/**
+ * Eski atamaları yeni slot dizisine pozisyon-sırasıyla aktar.
+ * (Formasyon değişince kayıp önler — DF1'den DF1'e, MF1→MF1 vb.)
+ */
+function mergeAssignments(
+  oldAssignments: PlayerAssignment[],
+  newSlots: PlayerAssignment[],
+): PlayerAssignment[] {
+  const byPos: Record<string, PlayerAssignment[]> = {}
+  for (const a of oldAssignments) {
+    if (!byPos[a.position]) byPos[a.position] = []
+    byPos[a.position]!.push(a)
+  }
+  return newSlots.map((slot) => {
+    const next = byPos[slot.position]?.shift()
+    return next ?? slot
+  })
+}
+
+const POSITION_LABELS: Record<string, string> = {
+  GK: 'Kaleci',
+  DF: 'Defans',
+  MF: 'Orta Saha',
+  FW: 'Forvet',
+}
+
 // =============================================================================
 // Form
 // =============================================================================
@@ -67,6 +142,8 @@ interface Props {
   matchId: string
   opponentName: string
   initial: PlanPayload | null
+  /** Kadrodaki oyuncular — assignment dropdown'larında listelenir */
+  availablePlayers: SquadOption[]
 }
 
 type SaveState =
@@ -75,17 +152,28 @@ type SaveState =
   | { kind: 'saved' }
   | { kind: 'error'; message: string }
 
-export function MatchPlanForm({ matchId, opponentName, initial }: Props) {
+export function MatchPlanForm({ matchId, opponentName, initial, availablePlayers }: Props) {
   const router = useRouter()
-  const [plan, setPlan] = useState<PlanPayload>(
-    initial ?? {
+  const [plan, setPlan] = useState<PlanPayload>(() => {
+    if (initial) {
+      // Mevcut planı kullan; assignment yoksa formasyondan slot üret
+      return {
+        ...initial,
+        playerAssignments:
+          initial.playerAssignments.length > 0
+            ? initial.playerAssignments
+            : generateSlots(initial.formation),
+      }
+    }
+    return {
       name: `${opponentName} maç planı`,
       formation: '4-3-3',
       teamInstructions: DEFAULT_TEAM_INSTRUCTIONS,
       thresholds: DEFAULT_THRESHOLDS,
+      playerAssignments: generateSlots('4-3-3'),
       notes: '',
-    },
-  )
+    }
+  })
   const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' })
 
   const setInstr = <K extends keyof TeamInstructions>(key: K, value: TeamInstructions[K]) => {
@@ -99,6 +187,29 @@ export function MatchPlanForm({ matchId, opponentName, initial }: Props) {
 
   const resetThresholds = () => {
     setPlan((p) => ({ ...p, thresholds: { ...DEFAULT_THRESHOLDS } }))
+    setSaveState({ kind: 'idle' })
+  }
+
+  // Diziliş değişimi → slot dizisini yeniden üret, mevcut atamaları aktar
+  const setFormation = (formation: string) => {
+    setPlan((p) => {
+      const newSlots = generateSlots(formation)
+      return {
+        ...p,
+        formation,
+        playerAssignments: mergeAssignments(p.playerAssignments, newSlots),
+      }
+    })
+    setSaveState({ kind: 'idle' })
+  }
+
+  const updateAssignment = (idx: number, patch: Partial<PlayerAssignment>) => {
+    setPlan((p) => ({
+      ...p,
+      playerAssignments: p.playerAssignments.map((a, i) =>
+        i === idx ? { ...a, ...patch } : a,
+      ),
+    }))
     setSaveState({ kind: 'idle' })
   }
 
@@ -130,8 +241,17 @@ export function MatchPlanForm({ matchId, opponentName, initial }: Props) {
 
   return (
     <div className="space-y-6">
-      <PlanIdentity plan={plan} onChange={(p) => { setPlan(p); setSaveState({ kind: 'idle' }) }} />
+      <PlanIdentity
+        plan={plan}
+        onChange={(p) => { setPlan(p); setSaveState({ kind: 'idle' }) }}
+        onFormationChange={setFormation}
+      />
       <TeamInstructionsSection instructions={plan.teamInstructions} onChange={setInstr} />
+      <PlayerAssignmentsSection
+        assignments={plan.playerAssignments}
+        availablePlayers={availablePlayers}
+        onUpdate={updateAssignment}
+      />
       <ThresholdsSection
         thresholds={plan.thresholds}
         onChange={setThr}
@@ -179,9 +299,11 @@ export function MatchPlanForm({ matchId, opponentName, initial }: Props) {
 function PlanIdentity({
   plan,
   onChange,
+  onFormationChange,
 }: {
   plan: PlanPayload
   onChange: (p: PlanPayload) => void
+  onFormationChange: (f: string) => void
 }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -199,7 +321,7 @@ function PlanIdentity({
         <Field label="Diziliş">
           <select
             value={plan.formation}
-            onChange={(e) => onChange({ ...plan, formation: e.target.value })}
+            onChange={(e) => onFormationChange(e.target.value)}
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
           >
             {FORMATIONS.map((f) => (
@@ -210,6 +332,115 @@ function PlanIdentity({
           </select>
         </Field>
       </div>
+    </div>
+  )
+}
+
+function PlayerAssignmentsSection({
+  assignments,
+  availablePlayers,
+  onUpdate,
+}: {
+  assignments: PlayerAssignment[]
+  availablePlayers: SquadOption[]
+  onUpdate: (idx: number, patch: Partial<PlayerAssignment>) => void
+}) {
+  // Aynı oyuncuyu birden fazla slot'a koymayı engellemek için seçili ID seti
+  const usedPlayerIds = new Set(
+    assignments.map((a) => a.player_id).filter(Boolean) as string[],
+  )
+
+  // Pozisyona göre slot sayacı (UI etiketleri için: "Defans 1", "Defans 2" vb.)
+  const posCounter: Record<string, number> = {}
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="font-display text-base font-semibold">Oyuncu Görevleri</h2>
+          <p className="text-xs text-muted-foreground">
+            Dizilişin her slot'una kadrodan oyuncu ata + ona özel taktik rol/talimat ver.
+          </p>
+        </div>
+        {availablePlayers.length === 0 && (
+          <a
+            href="/squad"
+            className="text-xs text-primary hover:underline"
+          >
+            Kadro boş — ekle →
+          </a>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {assignments.map((a, idx) => {
+          posCounter[a.position] = (posCounter[a.position] ?? 0) + 1
+          const label =
+            a.position === 'GK'
+              ? 'Kaleci'
+              : `${POSITION_LABELS[a.position] ?? a.position} ${posCounter[a.position]}`
+          return (
+            <PlayerAssignmentRow
+              key={idx}
+              label={label}
+              assignment={a}
+              availablePlayers={availablePlayers}
+              usedPlayerIds={usedPlayerIds}
+              onUpdate={(patch) => onUpdate(idx, patch)}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function PlayerAssignmentRow({
+  label,
+  assignment,
+  availablePlayers,
+  usedPlayerIds,
+  onUpdate,
+}: {
+  label: string
+  assignment: PlayerAssignment
+  availablePlayers: SquadOption[]
+  usedPlayerIds: Set<string>
+  onUpdate: (patch: Partial<PlayerAssignment>) => void
+}) {
+  // Bu satırın kendisi seçilmiş — listeden çıkarmamak için
+  const own = assignment.player_id
+  const selectable = availablePlayers.filter(
+    (p) => p.id === own || !usedPlayerIds.has(p.id),
+  )
+
+  return (
+    <div className="grid items-center gap-2 rounded-md border border-border bg-background/40 p-2 sm:grid-cols-[120px_1fr_1fr]">
+      <span className="font-mono text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <select
+        value={assignment.player_id ?? ''}
+        onChange={(e) => onUpdate({ player_id: e.target.value || null })}
+        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        aria-label={`${label} oyuncu`}
+      >
+        <option value="">— Oyuncu seç —</option>
+        {selectable.map((p) => (
+          <option key={p.id} value={p.id}>
+            #{p.jerseyNumber} {p.firstName} {p.lastName} ({p.position})
+          </option>
+        ))}
+      </select>
+      <input
+        type="text"
+        value={assignment.role}
+        onChange={(e) => onUpdate({ role: e.target.value })}
+        placeholder="Rol/talimat (örn. 'box-to-box', 'sol ayağıyla orta açar')"
+        maxLength={80}
+        className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        aria-label={`${label} rol`}
+      />
     </div>
   )
 }
