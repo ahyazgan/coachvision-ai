@@ -15,6 +15,7 @@ import {
   HeartPulse,
   Sparkles,
   Settings,
+  Calendar,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -27,6 +28,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Pano', icon: LayoutDashboard },
+  { href: '/match', label: 'Maçlar', icon: Calendar },
   { href: '/video', label: 'Video Analizi', icon: Video },
   { href: '/live', label: 'Canlı Maç', icon: Radio },
   { href: '/tactics', label: 'Taktik Tahtası', icon: ClipboardList },
